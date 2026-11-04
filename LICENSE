@@ -1,0 +1,11 @@
+Copyright (c) 2026 BUYBUDDY. All rights reserved.
+
+PROPRIETARY AND CONFIDENTIAL.
+
+This source code is delivered to the client under the development agreement. No licence is granted
+for redistribution, sublicensing or commercial use by any third party without the client's written
+consent. Upon final payment, intellectual property in the custom code transfers to the client per
+Section 10 of docs/PROPOSAL.md; third-party open-source components remain under their own licences
+(MIT / Apache-2.0), an inventory of which can be produced with `npm ls --all`.
+
+The BUYBUDDY name, logo and brand assets are the property of the client.

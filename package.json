@@ -1,0 +1,25 @@
+{
+  "name": "buybuddy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BUYBUDDY — all-in-one shopping, personal shopper and on-demand delivery marketplace (Nigeria).",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces --include-workspace-root",
+    "seed": "npm run seed -w server",
+    "dev": "npm run dev -w server & npm run dev -w web",
+    "build": "npm run build -w web",
+    "start": "npm run start -w server",
+    "test": "npm run test -w server"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "playwright": "^1.47.2"
+  }
+}

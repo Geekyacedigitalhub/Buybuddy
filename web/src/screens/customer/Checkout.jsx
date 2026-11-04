@@ -1,0 +1,386 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { api, naira, fmtAddress, pretty } from '../../lib/api.js';
+import {
+  Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, Textarea,
+  useAuth, useCart, useToast,
+} from '../../lib/ui.jsx';
+
+const uuid = () =>
+  (crypto.randomUUID ? crypto.randomUUID() : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+/* ---------------------------------- cart --------------------------------- */
+
+export function Cart() {
+  const { cart, reload } = useCart();
+  const nav = useNavigate();
+  const toast = useToast();
+
+  const setQty = async (item, qty) => {
+    try {
+      await api.patch(`/api/cart/${item.id}`, { qty });
+      await reload();
+    } catch (e) { toast.error(e.message); }
+  };
+  const remove = async (item) => {
+    await api.del(`/api/cart/${item.id}`);
+    await reload();
+    toast.success('Removed');
+  };
+
+  if (!cart.items.length) {
+    return (
+      <div className="page">
+        <Empty icon="bag" title="Your cart is empty"
+          body="Browse the marketplace or send a shopper a photo of exactly what you need."
+          action={<div className="row" style={{ gap: 8 }}>
+            <Button onClick={() => nav('/browse')}>Browse products</Button>
+            <Button variant="accent" onClick={() => nav('/shop-for-me')}>Shop for me</Button>
+          </div>} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="page page-tight col">
+      <SectionHead title="Your cart" subtitle={cart.store ? `From ${cart.store.name}` : ''} />
+
+      {cart.issues?.length > 0 && (
+        <div className="card" style={{ background: 'var(--warn-soft)', borderColor: '#f0dfb4' }}>
+          {cart.issues.map((i, idx) => (
+            <div key={idx} className="row" style={{ gap: 8, fontSize: 13 }}>
+              <Icon name="x" size={14} style={{ color: 'var(--warn)' }} /> {i.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="card card-flush">
+        {cart.items.map((item, i) => (
+          <div key={item.id} className="row" style={{ gap: 12, padding: 14, borderTop: i ? '1px solid var(--line)' : 'none' }}>
+            <img src={item.image} alt="" style={{ width: 62, height: 62, borderRadius: 12, objectFit: 'cover', background: 'var(--green-50)' }} />
+            <div className="grow">
+              <div className="strong" style={{ fontSize: 13.5, lineHeight: 1.3 }}>{item.name}</div>
+              <div className="tiny muted">{naira(item.price)} each</div>
+              <div className="row" style={{ gap: 6, marginTop: 6 }}>
+                <button className="btn btn-ghost btn-icon" style={{ padding: 4 }} onClick={() => setQty(item, item.qty - 1)} aria-label="Decrease"><Icon name="minus" size={13} /></button>
+                <span className="mono strong" style={{ width: 22, textAlign: 'center', fontSize: 13 }}>{item.qty}</span>
+                <button className="btn btn-ghost btn-icon" style={{ padding: 4 }} onClick={() => setQty(item, item.qty + 1)} aria-label="Increase"><Icon name="plus" size={13} /></button>
+              </div>
+            </div>
+            <div className="col" style={{ alignItems: 'flex-end', gap: 6 }}>
+              <span className="price mono">{naira(item.price * item.qty)}</span>
+              <button className="btn btn-ghost btn-icon" style={{ padding: 4 }} onClick={() => remove(item)} aria-label="Remove"><Icon name="x" size={13} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="row-between"><span className="sub">Subtotal ({cart.count} items)</span><span className="mono strong">{naira(cart.subtotal)}</span></div>
+        <div className="divider" />
+        <div className="row-between"><span className="sub">Service & delivery</span><span className="sub">Calculated at checkout</span></div>
+        <Button size="lg" block style={{ marginTop: 14 }} onClick={() => nav('/checkout')} disabled={cart.issues?.some((i) => i.type === 'store_closed')}>
+          Go to checkout · {naira(cart.subtotal)}
+        </Button>
+        <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 8 }} onClick={() => nav('/browse')}>Add more items</button>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------- checkout -------------------------------- */
+
+export function Checkout() {
+  const { cart, reload } = useCart();
+  const { config } = useAuth();
+  const nav = useNavigate();
+  const toast = useToast();
+  const [addresses, setAddresses] = useState([]);
+  const [addressId, setAddressId] = useState('');
+  const [serviceLevel, setServiceLevel] = useState('standard');
+  const [promoCode, setPromoCode] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('paystack');
+  const [notes, setNotes] = useState('');
+  const [quote, setQuote] = useState(null);
+  const [placing, setPlacing] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newAddr, setNewAddr] = useState({ label: 'Home', line1: '', area: '', city: 'Lagos' });
+  const [idemKey] = useState(uuid);
+
+  useEffect(() => {
+    api.get('/api/addresses').then((r) => {
+      setAddresses(r.addresses);
+      const def = r.addresses.find((a) => a.is_default) || r.addresses[0];
+      if (def) setAddressId(def.id);
+      else setAddOpen(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!cart.items.length) return;
+    api.post('/api/cart/quote', { address_id: addressId || undefined, service_level: serviceLevel, promo_code: promoCode || undefined })
+      .then(setQuote).catch(() => setQuote(null));
+  }, [cart.items.length, cart.subtotal, addressId, serviceLevel, promoCode]);
+
+  const saveAddress = async () => {
+    try {
+      const r = await api.post('/api/addresses', newAddr);
+      setAddresses((p) => [...p, r.address]);
+      setAddressId(r.address.id);
+      setAddOpen(false);
+      toast.success('Address saved');
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const placeOrder = async () => {
+    if (!addressId) return toast.error('Choose a delivery address.');
+    setPlacing(true);
+    try {
+      const res = await api.post('/api/orders/checkout', {
+        address_id: addressId,
+        payment_method: paymentMethod,
+        service_level: serviceLevel,
+        promo_code: promoCode || undefined,
+        notes,
+        idempotency_key: idemKey,
+      }, { headers: { 'Idempotency-Key': idemKey } });
+      await reload();
+      if (res.payment?.authorization_url && !res.payment.paid) {
+        if (res.payment.sandbox) nav(`/pay/${res.payment.reference}?order=${res.order.id}`);
+        else window.location.href = res.payment.authorization_url;
+        return;
+      }
+      toast.success('Order placed!');
+      nav(`/orders/${res.order.id}`);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  if (!cart.items.length) return <div className="page"><Empty icon="bag" title="Nothing to check out" action={<Button onClick={() => nav('/browse')}>Browse</Button>} /></div>;
+
+  const methods = [
+    { id: 'paystack', label: 'Card / bank transfer', sub: quote?.payment_methods?.card ? 'Paystack — secure' : 'Unavailable', icon: 'card' },
+    ...(config?.wallet_enabled !== false ? [{ id: 'wallet', label: 'BUYBUDDY wallet', sub: 'Instant, no card needed', icon: 'wallet' }] : []),
+    ...(config?.cod_enabled !== false ? [{ id: 'cash', label: 'Cash on delivery', sub: 'Pay the rider on arrival', icon: 'truck' }] : []),
+  ];
+
+  return (
+    <div className="page page-tight col" style={{ gap: 14 }}>
+      <div className="row">
+        <button className="btn btn-ghost btn-icon" onClick={() => nav('/cart')}><Icon name="left" /></button>
+        <div className="h2">Checkout</div>
+      </div>
+
+      <section className="card col" style={{ gap: 10 }}>
+        <div className="row-between">
+          <div className="h3">Delivery address</div>
+          <button className="btn btn-ghost btn-sm" onClick={() => setAddOpen(true)}>+ New</button>
+        </div>
+        {addresses.length === 0 && <div className="sub">Add an address to continue.</div>}
+        {addresses.map((a) => (
+          <button key={a.id} onClick={() => setAddressId(a.id)} className="tile row" style={{
+            gap: 10, textAlign: 'left', cursor: 'pointer',
+            border: `1.5px solid ${addressId === a.id ? 'var(--green-600)' : 'var(--line)'}`,
+            background: addressId === a.id ? 'var(--green-50)' : '#fff',
+          }}>
+            <Icon name="pin" size={18} style={{ color: 'var(--green-700)' }} />
+            <div className="grow">
+              <div className="strong" style={{ fontSize: 13.5 }}>{a.label} · {fmtAddress(a)}</div>
+              <div className="sub">{a.notes || a.recipient}</div>
+            </div>
+            {addressId === a.id && <Icon name="check" size={16} style={{ color: 'var(--green-700)' }} />}
+          </button>
+        ))}
+      </section>
+
+      <section className="card col" style={{ gap: 10 }}>
+        <div className="h3">Delivery speed</div>
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[
+            { id: 'standard', title: 'Standard', sub: '25–40 min', extra: 0 },
+            { id: 'express', title: 'Express', sub: '15–25 min', extra: config?.express_fee || 900 },
+          ].map((o) => (
+            <button key={o.id} onClick={() => setServiceLevel(o.id)} className="tile" style={{
+              textAlign: 'left', cursor: 'pointer',
+              border: `1.5px solid ${serviceLevel === o.id ? 'var(--green-600)' : 'var(--line)'}`,
+              background: serviceLevel === o.id ? 'var(--green-50)' : '#fff',
+            }}>
+              <div className="strong" style={{ fontSize: 13.5 }}>{o.title}</div>
+              <div className="sub">{o.sub}</div>
+              <div className="tiny" style={{ color: 'var(--orange)', fontWeight: 700, marginTop: 4 }}>
+                {o.extra ? `+${naira(o.extra)}` : 'No extra fee'}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="card col" style={{ gap: 10 }}>
+        <div className="h3">Payment</div>
+        {methods.map((m) => (
+          <button key={m.id} onClick={() => setPaymentMethod(m.id)} className="tile row" style={{
+            gap: 12, textAlign: 'left', cursor: 'pointer',
+            border: `1.5px solid ${paymentMethod === m.id ? 'var(--green-600)' : 'var(--line)'}`,
+            background: paymentMethod === m.id ? 'var(--green-50)' : '#fff',
+          }}>
+            <Icon name={m.icon} size={18} style={{ color: 'var(--green-700)' }} />
+            <div className="grow">
+              <div className="strong" style={{ fontSize: 13.5 }}>{m.label}</div>
+              <div className="sub">{m.sub}</div>
+            </div>
+            {paymentMethod === m.id && <Icon name="check" size={16} style={{ color: 'var(--green-700)' }} />}
+          </button>
+        ))}
+        <Field label="Promo code">
+          <div className="row" style={{ gap: 8 }}>
+            <Input value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="WELCOME10" />
+            <Button variant="ghost" onClick={() => setPromoCode((c) => c.trim())}>Apply</Button>
+          </div>
+        </Field>
+        <Field label="Notes for the store or rider (optional)">
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Call when you reach the gate." />
+        </Field>
+      </section>
+
+      <section className="card">
+        <div className="h3" style={{ marginBottom: 10 }}>Order summary</div>
+        <Row label={`Items (${cart.count})`} value={naira(quote?.subtotal ?? cart.subtotal)} />
+        <Row label="Service fee" value={naira(quote?.serviceFee || 0)} />
+        <Row label="Delivery fee" value={naira(quote?.deliveryFee || 0)} />
+        <Row label={`VAT (${config?.vat_percent ?? 7.5}%)`} value={naira(quote?.tax || 0)} />
+        {quote?.discount > 0 && <Row label="Promo discount" value={`− ${naira(quote.discount)}`} tone="var(--green-700)" />}
+        <div className="divider" />
+        <div className="row-between">
+          <span className="h3">Total</span>
+          <span className="h2 mono">{naira(quote?.total ?? cart.subtotal)}</span>
+        </div>
+        <Button size="lg" block style={{ marginTop: 14 }} disabled={placing || !addressId} onClick={placeOrder}>
+          {placing ? 'Placing order…' : `Place order · ${naira(quote?.total ?? cart.subtotal)}`}
+        </Button>
+        <div className="tiny muted center" style={{ marginTop: 10 }}>
+          <Icon name="check" size={11} style={{ verticalAlign: -1 }} /> Payments are verified on our servers, never in the app.
+        </div>
+      </section>
+
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add delivery address"
+        footer={<Button block onClick={saveAddress}>Save address</Button>}>
+        <div className="col" style={{ gap: 12 }}>
+          <Field label="Label"><Input value={newAddr.label} onChange={(e) => setNewAddr({ ...newAddr, label: e.target.value })} placeholder="Home / Office" /></Field>
+          <Field label="Street address"><Input value={newAddr.line1} onChange={(e) => setNewAddr({ ...newAddr, line1: e.target.value })} placeholder="14 Admiralty Way" /></Field>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <Field label="Area"><Input value={newAddr.area} onChange={(e) => setNewAddr({ ...newAddr, area: e.target.value })} placeholder="Lekki Phase 1" /></Field>
+            <Field label="City"><Input value={newAddr.city} onChange={(e) => setNewAddr({ ...newAddr, city: e.target.value })} /></Field>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+const Row = ({ label, value, tone }) => (
+  <div className="row-between" style={{ marginBottom: 6 }}>
+    <span className="sub">{label}</span>
+    <span className="mono" style={{ fontSize: 13.5, color: tone || 'inherit' }}>{value}</span>
+  </div>
+);
+
+/* ------------------------------ sandbox pay ------------------------------- */
+
+export function SandboxPay() {
+  const { reference } = useParams();
+  const [params] = useSearchParams();
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState(null);
+  const toast = useToast();
+  const nav = useNavigate();
+
+  useEffect(() => {
+    api.get('/api/me').then((r) => setInfo(r)).catch(() => {});
+  }, []);
+
+  const pay = async () => {
+    setBusy(true);
+    try {
+      const res = await api.post(`/api/dev/payments/${reference}/approve`, {});
+      toast.success('Payment approved');
+      nav(`/payment/return?reference=${reference}`);
+    } catch (e) {
+      toast.error(e.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="page page-tight" style={{ maxWidth: 460, paddingTop: 40 }}>
+      <div className="card card-pad-lg">
+        <div className="row-between">
+          <span className="badge badge-warn">Sandbox gateway</span>
+          <span className="tiny muted mono">{reference}</span>
+        </div>
+        <div className="h1" style={{ marginTop: 14 }}>Complete your payment</div>
+        <p className="sub" style={{ marginTop: 6 }}>
+          Paystack keys are not configured, so BUYBUDDY is using its built-in test gateway.
+          No real money moves. In production this screen is replaced by Paystack's secure checkout.
+        </p>
+
+        <div className="tile" style={{ marginTop: 16, background: 'var(--green-50)', border: 'none' }}>
+          <div className="row-between"><span className="sub">Amount</span><span className="h2 mono">Test mode</span></div>
+          <div className="row-between" style={{ marginTop: 6 }}><span className="sub">Card</span><span className="mono strong">4084 0840 8408 4081</span></div>
+          <div className="row-between" style={{ marginTop: 6 }}><span className="sub">Expiry / CVV</span><span className="mono strong">12/29 · 408</span></div>
+        </div>
+
+        <Button size="lg" block style={{ marginTop: 18 }} onClick={pay} disabled={busy}>
+          {busy ? 'Processing…' : 'Approve test payment'}
+        </Button>
+        <button className="btn btn-ghost btn-block btn-sm" style={{ marginTop: 8 }} onClick={() => nav('/orders')}>Cancel and pay later</button>
+      </div>
+    </div>
+  );
+}
+
+export function PaymentReturn() {
+  const [params] = useSearchParams();
+  const reference = params.get('reference') || params.get('reference') || '';
+  const nav = useNavigate();
+  const [state, setState] = useState({ loading: true });
+
+  useEffect(() => {
+    if (!reference) return setState({ loading: false, error: 'No payment reference supplied.' });
+    api.post(`/api/payments/${reference}/verify`, {})
+      .then((r) => {
+        setState({ loading: false, result: r });
+        if (r.order) setTimeout(() => nav(`/orders/${r.order.id}`), 1200);
+      })
+      .catch((e) => setState({ loading: false, error: e.message }));
+  }, [reference]);
+
+  return (
+    <div className="page page-tight center" style={{ maxWidth: 460, paddingTop: 60 }}>
+      {state.loading && <Loading label="Verifying your payment…" />}
+      {state.error && (
+        <div className="card">
+          <div className="h2">We could not confirm this payment</div>
+          <p className="sub" style={{ marginTop: 6 }}>{state.error}</p>
+          <Button block style={{ marginTop: 14 }} onClick={() => nav('/orders')}>Go to my orders</Button>
+        </div>
+      )}
+      {state.result && (
+        <div className="card">
+          <div style={{ fontSize: 42 }}>✅</div>
+          <div className="h2" style={{ marginTop: 8 }}>Payment confirmed</div>
+          <p className="sub" style={{ marginTop: 6 }}>
+            {state.result.order?.code ? `Order ${state.result.order.code} is confirmed.` : 'Your payment was verified.'}
+          </p>
+          {state.result.order && <Badge tone="badge-green" className="mono">{(state.result.order.status || '').replace(/_/g, ' ')}</Badge>}
+          <Button block style={{ marginTop: 16 }} onClick={() => nav(state.result.order ? `/orders/${state.result.order.id}` : '/orders')}>
+            Track my order
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,189 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button, Field, Icon, Input, Logo, Select, useAuth, useToast } from '../lib/ui.jsx';
+
+const DEMOS = [
+  { role: 'Customer', email: 'customer@buybuddy.ng', icon: '🛍️' },
+  { role: 'Shopper', email: 'shopper@buybuddy.ng', icon: '🛒' },
+  { role: 'Rider', email: 'rider@buybuddy.ng', icon: '🛵' },
+  { role: 'Merchant', email: 'merchant1@buybuddy.ng', icon: '🏪' },
+  { role: 'Admin', email: 'admin@buybuddy.ng', icon: '🛡️' },
+];
+
+const ROLES = [
+  { id: 'customer', label: 'I want to shop', icon: '🛍️' },
+  { id: 'shopper', label: 'I want to shop for others', icon: '🛒' },
+  { id: 'rider', label: 'I want to deliver', icon: '🛵' },
+  { id: 'merchant', label: 'I own a store', icon: '🏪' },
+];
+
+export default function AuthScreen() {
+  const [mode, setMode] = useState('login');
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', role: 'customer', business_name: '', city: 'Lagos' });
+  const [busy, setBusy] = useState(false);
+  const { login, register } = useAuth();
+  const toast = useToast();
+  const nav = useNavigate();
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const go = (user) => {
+    const dest = { admin: '/admin', merchant: '/merchant', shopper: '/worker', rider: '/worker' }[user.role] || '/';
+    nav(dest, { replace: true });
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      if (mode === 'login') {
+        const user = await login(form.email || form.phone, form.password);
+        toast.success(`Welcome back, ${user.name.split(' ')[0]}`);
+        go(user);
+      } else {
+        const res = await register({
+          name: form.name,
+          email: form.email || undefined,
+          phone: form.phone || undefined,
+          password: form.password,
+          role: form.role,
+          city: form.city,
+          business_name: form.business_name || undefined,
+        });
+        toast.success('Account created — welcome to BUYBUDDY!');
+        go(res.user);
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const quick = async (email) => {
+    setBusy(true);
+    try {
+      const user = await login(email, 'Password123!');
+      toast.success(`Signed in as ${user.name}`);
+      go(user);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="auth-wrap">
+      <aside className="auth-art">
+        <div className="glow" style={{ width: 320, height: 320, left: -80, bottom: 40 }} />
+        <div className="glow" style={{ width: 200, height: 200, right: 40, top: 60 }} />
+        <Logo size={40} />
+        <div style={{ position: 'relative', zIndex: 2 }}>
+          <h1 style={{ fontSize: 40, lineHeight: 1.12, letterSpacing: '-1.2px', fontWeight: 800 }}>
+            Anything you need.<br />Delivered by a buddy.
+          </h1>
+          <p style={{ opacity: 0.82, marginTop: 16, fontSize: 15.5, lineHeight: 1.65, maxWidth: 430 }}>
+            Groceries, food, fashion, pharmacy — or send a photo of something you saw in a shop and
+            a BUYBUDDY shopper will find it, price it and bring it to your door.
+          </p>
+          <div className="row wrap" style={{ gap: 10, marginTop: 24 }}>
+            {['🛒 Groceries in minutes', '📸 Shop for me by photo', '🛵 Live rider tracking', '💳 Secure payments'].map((t) => (
+              <span key={t} className="badge" style={{ background: 'rgba(255,255,255,0.14)', color: '#fff' }}>{t}</span>
+            ))}
+          </div>
+        </div>
+        <div style={{ position: 'relative', zIndex: 2, fontSize: 12.5, opacity: 0.7 }}>
+          Lagos • Naira payments via Paystack • Built for Nigeria
+        </div>
+      </aside>
+
+      <section className="auth-form">
+        <div className="hide-sm" style={{ marginBottom: 22 }}><Logo tagline /></div>
+        <div className="h1">{mode === 'login' ? 'Welcome back' : 'Create your account'}</div>
+        <p className="sub" style={{ marginTop: 4, marginBottom: 20 }}>
+          {mode === 'login' ? 'Sign in to shop, sell, or earn with BUYBUDDY.' : 'It takes less than a minute.'}
+        </p>
+
+        <form onSubmit={submit} className="col" style={{ gap: 14 }}>
+          {mode === 'register' && (
+            <>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                {ROLES.map((r) => (
+                  <button
+                    type="button"
+                    key={r.id}
+                    onClick={() => setForm((f) => ({ ...f, role: r.id }))}
+                    className="btn"
+                    style={{
+                      flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '11px 12px', height: 66,
+                      background: form.role === r.id ? 'var(--green-50)' : '#fff',
+                      border: `1.5px solid ${form.role === r.id ? 'var(--green-600)' : 'var(--line)'}`,
+                      color: form.role === r.id ? 'var(--green-800)' : 'var(--ink-2)',
+                      fontSize: 12.5, whiteSpace: 'normal', textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontSize: 17 }}>{r.icon}</span>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              <Field label="Full name">
+                <Input value={form.name} onChange={set('name')} placeholder="Tunde Bakare" required />
+              </Field>
+              {form.role === 'merchant' && (
+                <Field label="Business name">
+                  <Input value={form.business_name} onChange={set('business_name')} placeholder="GreenMart Supermarket" />
+                </Field>
+              )}
+            </>
+          )}
+
+          <Field label={mode === 'login' ? 'Email or phone number' : 'Email address'}>
+            <Input
+              value={form.email}
+              onChange={set('email')}
+              placeholder={mode === 'login' ? 'you@example.com or 0803…' : 'you@example.com'}
+              autoComplete="username"
+              required={mode === 'login' || !form.phone}
+            />
+          </Field>
+
+          {mode === 'register' && (
+            <Field label="Phone number" hint="Nigerian numbers only — used for verification and delivery calls.">
+              <Input value={form.phone} onChange={set('phone')} placeholder="0803 123 4567" inputMode="tel" />
+            </Field>
+          )}
+
+          <Field label="Password" hint={mode === 'register' ? 'At least 8 characters.' : undefined}>
+            <Input type="password" value={form.password} onChange={set('password')} placeholder="••••••••" autoComplete="current-password" required />
+          </Field>
+
+          <Button type="submit" size="lg" block disabled={busy}>
+            {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+          </Button>
+        </form>
+
+        <div className="row-between" style={{ marginTop: 14 }}>
+          <span className="sub">{mode === 'login' ? 'New to BUYBUDDY?' : 'Already have an account?'}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
+            {mode === 'login' ? 'Create account' : 'Sign in'}
+          </button>
+        </div>
+
+        <div className="divider" />
+        <div className="tiny muted" style={{ marginBottom: 8, fontWeight: 700, letterSpacing: '0.08em' }}>DEMO ACCOUNTS — PASSWORD: Password123!</div>
+        <div className="row wrap" style={{ gap: 8 }}>
+          {DEMOS.map((d) => (
+            <button key={d.email} className="chip" disabled={busy} onClick={() => quick(d.email)}>
+              <span style={{ marginRight: 6 }}>{d.icon}</span>{d.role}
+            </button>
+          ))}
+        </div>
+        <p className="tiny muted" style={{ marginTop: 14, lineHeight: 1.6 }}>
+          <Icon name="check" size={12} style={{ verticalAlign: -1 }} /> Sandbox checkout is enabled — card payments run
+          through BUYBUDDY's built-in test gateway until Paystack keys are configured.
+        </p>
+      </section>
+    </div>
+  );
+}

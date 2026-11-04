@@ -1,0 +1,578 @@
+import { Router } from 'express';
+import { db } from '../lib/db.js';
+import { requireAuth, requireRole, revokeTokens } from '../lib/auth.js';
+import { asyncHandler, bad, notFound, now, paginate, requireFields, uid, slugify, forbidden } from '../lib/util.js';
+import { notify, event, settingsAll, setSetting, DEFAULT_SETTINGS, walletBalance, walletEntry, audit } from '../lib/settings.js';
+import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers } from '../lib/orders.js';
+import { refundPayment } from '../lib/payments.js';
+
+const router = Router();
+router.use(requireAuth, requireRole('admin'));
+
+/* ------------------------------- overview -------------------------------- */
+
+router.get(
+  '/admin/overview',
+  asyncHandler(async (req, res) => {
+    const days = Math.max(1, Number(req.query.days || 7));
+    const since = new Date(Date.now() - days * 864e5).toISOString();
+
+    const count = (sql, ...p) => db.prepare(sql).get(...p).c;
+    const customers = count("SELECT COUNT(*) c FROM users WHERE role='customer'");
+    const merchants = count("SELECT COUNT(*) c FROM users WHERE role='merchant'");
+    const merchantsPending = count("SELECT COUNT(*) c FROM stores WHERE status='pending'");
+    const shoppers = count("SELECT COUNT(*) c FROM users WHERE role='shopper'");
+    const riders = count("SELECT COUNT(*) c FROM users WHERE role='rider'");
+    const workersPending = count('SELECT COUNT(*) c FROM worker_profiles WHERE verified = 0');
+    const orders = db.prepare('SELECT * FROM orders').all();
+    const byStatus = orders.reduce((acc, o) => ({ ...acc, [o.status]: (acc[o.status] || 0) + 1 }), {});
+    const paid = orders.filter((o) => ['paid', 'paid_cash'].includes(o.payment_status));
+    const gmv = paid.reduce((s, o) => s + o.total, 0);
+    const completed = orders.filter((o) => ['completed', 'delivered'].includes(o.status));
+    const completedGmv = completed.reduce((s, o) => s + (o.approved_subtotal || o.subtotal), 0);
+    const serviceRevenue = paid.reduce((s, o) => s + o.service_fee, 0);
+    const deliveryRevenue = paid.reduce((s, o) => s + o.delivery_fee, 0);
+    const merchantCommission = completed.reduce((s, o) => {
+      const store = o.store_id ? db.prepare('SELECT commission_rate FROM stores WHERE id = ?').get(o.store_id) : null;
+      return s + Math.round((o.approved_subtotal || o.subtotal) * (store?.commission_rate ?? 0.12));
+    }, 0);
+    const platformRevenue = serviceRevenue + merchantCommission;
+
+    const chart = [];
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const day = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10);
+      const dayOrders = orders.filter((o) => o.created_at.startsWith(day));
+      chart.push({
+        day,
+        orders: dayOrders.length,
+        gmv: dayOrders.filter((o) => ['paid', 'paid_cash'].includes(o.payment_status)).reduce((s, o) => s + o.total, 0),
+      });
+    }
+
+    const recentOrders = db
+      .prepare('SELECT * FROM orders ORDER BY created_at DESC LIMIT 8')
+      .all()
+      .map((o) => ({
+        ...o,
+        status_label: orderLabel(o.status),
+        customer: db.prepare('SELECT name FROM users WHERE id = ?').get(o.customer_id)?.name,
+      }));
+
+    res.json({
+      kpis: {
+        customers, merchants, merchants_pending: merchantsPending, shoppers, riders, workers_pending: workersPending,
+        orders_total: orders.length,
+        orders_active: orders.filter((o) => !['completed', 'cancelled', 'refunded'].includes(o.status)).length,
+        orders_completed: completed.length,
+        orders_cancelled: orders.filter((o) => o.status === 'cancelled').length,
+        orders_disputed: count("SELECT COUNT(*) c FROM support_tickets WHERE status != 'resolved'"),
+        gmv, completed_gmv: completedGmv, service_revenue: serviceRevenue,
+        delivery_revenue: deliveryRevenue, merchant_commission: merchantCommission,
+        platform_revenue: platformRevenue,
+        payouts_pending: db.prepare("SELECT COALESCE(SUM(amount),0) s FROM payouts WHERE status='requested'").get().s,
+        open_tickets: count("SELECT COUNT(*) c FROM support_tickets WHERE status = 'open'"),
+      },
+      by_status: byStatus,
+      chart,
+      recent_orders: recentOrders,
+      alerts: [
+        merchantsPending ? `${merchantsPending} merchant application(s) awaiting approval` : null,
+        workersPending ? `${workersPending} shopper/rider application(s) awaiting verification` : null,
+        count("SELECT COUNT(*) c FROM payouts WHERE status='requested'") ? 'Withdrawal requests awaiting review' : null,
+        count("SELECT COUNT(*) c FROM orders WHERE type='personal' AND status='awaiting_approval'") ? 'Personal shopping baskets awaiting customer approval' : null,
+      ].filter(Boolean),
+    });
+  })
+);
+
+/* --------------------------------- orders -------------------------------- */
+
+router.get(
+  '/admin/orders',
+  asyncHandler(async (req, res) => {
+    const { limit, offset, page } = paginate(req, 30);
+    const where = ['1=1'];
+    const params = [];
+    if (req.query.status) {
+      where.push('status = ?');
+      params.push(req.query.status);
+    }
+    if (req.query.type) {
+      where.push('type = ?');
+      params.push(req.query.type);
+    }
+    if (req.query.q) {
+      where.push('(code LIKE ? OR id IN (SELECT id FROM orders WHERE address_json LIKE ?))');
+      params.push(`%${req.query.q}%`, `%${req.query.q}%`);
+    }
+    if (req.query.payment_status) {
+      where.push('payment_status = ?');
+      params.push(req.query.payment_status);
+    }
+    const sql = where.join(' AND ');
+    const rows = db.prepare(`SELECT * FROM orders WHERE ${sql} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+    const total = db.prepare(`SELECT COUNT(*) c FROM orders WHERE ${sql}`).get(...params).c;
+    res.json({
+      orders: rows.map((o) => ({
+        ...o,
+        status_label: orderLabel(o.status),
+        customer: db.prepare('SELECT name, phone FROM users WHERE id = ?').get(o.customer_id),
+        store: o.store_id ? db.prepare('SELECT name FROM stores WHERE id = ?').get(o.store_id) : null,
+        shopper: o.shopper_id ? db.prepare('SELECT name FROM users WHERE id = ?').get(o.shopper_id)?.name : null,
+        rider: o.rider_id ? db.prepare('SELECT name FROM users WHERE id = ?').get(o.rider_id)?.name : null,
+      })),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  })
+);
+
+router.get(
+  '/admin/orders/:id',
+  asyncHandler(async (req, res) => {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ? OR code = ?').get(req.params.id, String(req.params.id).toUpperCase());
+    if (!order) throw notFound('Order not found');
+    res.json({
+      order: publicOrder(order, { includePrivate: true }),
+      payments: db.prepare('SELECT * FROM payments WHERE order_id = ? ORDER BY created_at DESC').all(order.id),
+      receipts: db.prepare('SELECT id,file_name,amount,note,created_at,uploaded_by FROM receipts WHERE order_id = ?').all(order.id),
+      messages: db.prepare('SELECT * FROM messages WHERE order_id = ? ORDER BY created_at').all(order.id),
+      events: db.prepare('SELECT * FROM order_events WHERE order_id = ? ORDER BY created_at').all(order.id),
+      eligible_shoppers: eligibleWorkers('shopper'),
+      eligible_riders: eligibleWorkers('rider'),
+    });
+  })
+);
+
+router.post(
+  '/admin/orders/:id/assign',
+  asyncHandler(async (req, res) => {
+    const { worker_id, role } = req.body || {};
+    if (!worker_id || !['shopper', 'rider'].includes(role)) throw bad('Provide worker_id and role (shopper|rider).');
+    const order = forceAssign(req.params.id, worker_id, role);
+    audit(req, 'order.assign', 'order', order.id, { worker_id, role });
+    res.json({ order: publicOrder(order) });
+  })
+);
+
+router.post(
+  '/admin/orders/:id/status',
+  asyncHandler(async (req, res) => {
+    const { status, note } = req.body || {};
+    if (!status) throw bad('Provide the target status.');
+    const order = transition(req.params.id, status, { actor: req.user, actorRole: 'admin', note: note || 'Updated by admin' });
+    audit(req, 'order.status', 'order', order.id, { status });
+    res.json({ order: publicOrder(order) });
+  })
+);
+
+router.post(
+  '/admin/orders/:id/refund',
+  asyncHandler(async (req, res) => {
+    const result = refundPayment(req.params.id, {
+      amount: req.body?.amount,
+      reason: req.body?.reason,
+      actor: req.user,
+    });
+    audit(req, 'order.refund', 'order', req.params.id, result);
+    res.json(result);
+  })
+);
+
+/* --------------------------------- users --------------------------------- */
+
+router.get(
+  '/admin/users',
+  asyncHandler(async (req, res) => {
+    const { limit, offset, page } = paginate(req, 30);
+    const where = ['1=1'];
+    const params = [];
+    if (req.query.role) {
+      where.push('role = ?');
+      params.push(req.query.role);
+    }
+    if (req.query.status) {
+      where.push('status = ?');
+      params.push(req.query.status);
+    }
+    if (req.query.q) {
+      where.push('(name LIKE ? OR email LIKE ? OR phone LIKE ?)');
+      params.push(`%${req.query.q}%`, `%${req.query.q}%`, `%${req.query.q}%`);
+    }
+    const sql = where.join(' AND ');
+    const rows = db
+      .prepare(`SELECT id,role,name,email,phone,status,city,area,phone_verified,created_at FROM users WHERE ${sql} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .all(...params, limit, offset)
+      .map((u) => ({
+        ...u,
+        orders: db.prepare('SELECT COUNT(*) c FROM orders WHERE customer_id = ?').get(u.id).c,
+        wallet_balance: walletBalance(u.id),
+      }));
+    const total = db.prepare(`SELECT COUNT(*) c FROM users WHERE ${sql}`).get(...params).c;
+    res.json({ users: rows, total, page });
+  })
+);
+
+router.post(
+  '/admin/users/:id/status',
+  asyncHandler(async (req, res) => {
+    const { status, reason } = req.body || {};
+    if (!['active', 'suspended', 'restricted', 'pending'].includes(status)) throw bad('Invalid status.');
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+    if (!user) throw notFound('User not found');
+    if (user.role === 'admin') throw forbidden('Admin accounts cannot be modified here.');
+    db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, user.id);
+    if (status !== 'active') revokeTokens(user.id);
+    audit(req, 'user.status', 'user', user.id, { status, reason });
+    notify(user.id, {
+      title: `Account ${status}`,
+      body: reason || (status === 'active' ? 'Your account has been reactivated.' : 'Contact support for details.'),
+      kind: 'alert',
+    });
+    res.json({ ok: true });
+  })
+);
+
+/* ------------------------------- merchants ------------------------------- */
+
+router.get(
+  '/admin/merchants',
+  asyncHandler(async (req, res) => {
+    const stores = db
+      .prepare(
+        `SELECT s.*, u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone, u.status AS owner_status,
+                m.business_name, m.cac_number, m.verified
+         FROM stores s JOIN users u ON u.id = s.merchant_id
+         LEFT JOIN merchant_profiles m ON m.user_id = s.merchant_id
+         ORDER BY (s.status = 'pending') DESC, s.created_at DESC`
+      )
+      .all()
+      .map((s) => ({
+        ...s,
+        products: db.prepare('SELECT COUNT(*) c FROM products WHERE store_id = ?').get(s.id).c,
+        orders: db.prepare('SELECT COUNT(*) c FROM orders WHERE store_id = ?').get(s.id).c,
+      }));
+    res.json({ merchants: stores });
+  })
+);
+
+router.post(
+  '/admin/merchants/:storeId/decision',
+  asyncHandler(async (req, res) => {
+    const { decision, reason } = req.body || {};
+    if (!['approve', 'reject', 'suspend', 'reactivate'].includes(decision)) throw bad('Invalid decision.');
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.storeId);
+    if (!store) throw notFound('Store not found');
+    const map = { approve: 'active', reject: 'rejected', suspend: 'suspended', reactivate: 'active' };
+    const status = map[decision];
+    db.prepare('UPDATE stores SET status = ?, is_open = ?, suspended_reason = ? WHERE id = ?').run(
+      status, status === 'active' ? 1 : 0, decision === 'reject' || decision === 'suspend' ? reason || null : null, store.id
+    );
+    if (decision === 'approve') db.prepare('UPDATE merchant_profiles SET verified = 1 WHERE user_id = ?').run(store.merchant_id);
+    audit(req, `merchant.${decision}`, 'store', store.id, { reason });
+    notify(store.merchant_id, {
+      title: decision === 'approve' ? 'Store approved 🎉' : `Store ${status}`,
+      body: decision === 'approve' ? 'You can now open your store and start receiving orders.' : reason || 'Contact support for details.',
+      kind: 'alert',
+    });
+    res.json({ store: db.prepare('SELECT * FROM stores WHERE id = ?').get(store.id) });
+  })
+);
+
+/* -------------------------------- workers -------------------------------- */
+
+router.get(
+  '/admin/workers',
+  asyncHandler(async (req, res) => {
+    const workers = db
+      .prepare(
+        `SELECT u.id, u.name, u.email, u.phone, u.status, u.area, u.created_at, w.*
+         FROM users u JOIN worker_profiles w ON w.user_id = u.id
+         WHERE u.role IN ('shopper','rider')
+         ORDER BY w.verified ASC, u.created_at DESC`
+      )
+      .all()
+      .map((w) => ({
+        ...w,
+        docs_json: w.docs_json ? JSON.parse(w.docs_json) : null,
+        jobs: db.prepare('SELECT COUNT(*) c FROM orders WHERE shopper_id = ? OR rider_id = ?').get(w.id, w.id).c,
+        wallet_balance: walletBalance(w.id),
+      }));
+    res.json({ workers });
+  })
+);
+
+router.post(
+  '/admin/workers/:id/decision',
+  asyncHandler(async (req, res) => {
+    const { decision, reason } = req.body || {};
+    if (!['approve', 'reject', 'suspend'].includes(decision)) throw bad('Invalid decision.');
+    const worker = db.prepare('SELECT * FROM worker_profiles WHERE user_id = ?').get(req.params.id);
+    if (!worker) throw notFound('Worker not found');
+    if (decision === 'approve') {
+      db.prepare('UPDATE worker_profiles SET verified = 1, rejection_reason = NULL WHERE user_id = ?').run(worker.user_id);
+      db.prepare("UPDATE users SET status = 'active' WHERE id = ?").run(worker.user_id);
+    } else if (decision === 'reject') {
+      db.prepare('UPDATE worker_profiles SET verified = 0, rejection_reason = ? WHERE user_id = ?').run(reason || 'Documents not accepted', worker.user_id);
+    } else {
+      db.prepare("UPDATE users SET status = 'suspended' WHERE id = ?").run(worker.user_id);
+      revokeTokens(worker.user_id);
+    }
+    audit(req, `worker.${decision}`, 'worker', worker.user_id, { reason });
+    notify(worker.user_id, {
+      title: decision === 'approve' ? 'You are verified ✅' : `Verification ${decision}`,
+      body: reason || (decision === 'approve' ? 'You can now go online and accept jobs.' : 'Contact support for details.'),
+      kind: 'alert',
+    });
+    res.json({ ok: true });
+  })
+);
+
+/* -------------------------------- finance -------------------------------- */
+
+router.get(
+  '/admin/finance',
+  asyncHandler(async (req, res) => {
+    const payments = db
+      .prepare(
+        `SELECT p.*, o.code AS order_code, u.name AS customer_name FROM payments p
+         LEFT JOIN orders o ON o.id = p.order_id LEFT JOIN users u ON u.id = o.customer_id
+         ORDER BY p.created_at DESC LIMIT 100`
+      )
+      .all();
+    const payouts = db
+      .prepare(
+        `SELECT p.*, u.name AS worker_name, u.role, w.account_number, w.bank_name, w.account_name
+         FROM payouts p JOIN users u ON u.id = p.worker_id
+         LEFT JOIN worker_profiles w ON w.user_id = p.worker_id
+         ORDER BY p.requested_at DESC LIMIT 100`
+      )
+      .all();
+    res.json({
+      payments,
+      payouts,
+      totals: {
+        captured: db.prepare("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='success'").get().s,
+        pending: db.prepare("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='pending'").get().s,
+        refunded: db.prepare("SELECT COALESCE(SUM(amount),0) s FROM payments WHERE status='refunded'").get().s,
+        payouts_requested: db.prepare("SELECT COALESCE(SUM(amount),0) s FROM payouts WHERE status='requested'").get().s,
+        payouts_paid: db.prepare("SELECT COALESCE(SUM(amount),0) s FROM payouts WHERE status='paid'").get().s,
+      },
+    });
+  })
+);
+
+router.post(
+  '/admin/payouts/:id/decision',
+  asyncHandler(async (req, res) => {
+    const { decision } = req.body || {};
+    if (!['approve', 'reject', 'pay'].includes(decision)) throw bad('Invalid decision.');
+    const payout = db.prepare('SELECT * FROM payouts WHERE id = ?').get(req.params.id);
+    if (!payout) throw notFound('Payout not found');
+    if (decision === 'reject') {
+      db.prepare("UPDATE payouts SET status = 'rejected', processed_at = ? WHERE id = ?").run(now(), payout.id);
+      notify(payout.worker_id, { title: 'Withdrawal rejected', body: 'Contact support for details.', kind: 'payment' });
+    } else if (decision === 'approve') {
+      db.prepare("UPDATE payouts SET status = 'approved', processed_at = ? WHERE id = ?").run(now(), payout.id);
+      notify(payout.worker_id, { title: 'Withdrawal approved', body: 'Your money is on the way.', kind: 'payment' });
+    } else {
+      const bal = walletBalance(payout.worker_id);
+      if (bal < payout.amount) throw bad('Worker balance is too low to complete this payout.');
+      walletEntry(payout.worker_id, { type: 'debit', amount: payout.amount, description: 'Withdrawal paid out' });
+      db.prepare("UPDATE payouts SET status = 'paid', processed_at = ? WHERE id = ?").run(now(), payout.id);
+      notify(payout.worker_id, { title: 'Withdrawal paid', body: `₦${payout.amount.toLocaleString()} sent to your bank.`, kind: 'payment' });
+    }
+    audit(req, `payout.${decision}`, 'payout', payout.id, { amount: payout.amount });
+    res.json({ ok: true });
+  })
+);
+
+/* ------------------------------- marketing ------------------------------- */
+
+router.get(
+  '/admin/promos',
+  asyncHandler(async (_req, res) => {
+    res.json({ promos: db.prepare('SELECT * FROM promos ORDER BY created_at DESC').all() });
+  })
+);
+
+router.post(
+  '/admin/promos',
+  asyncHandler(async (req, res) => {
+    requireFields(req.body || {}, ['code', 'type', 'value']);
+    if (!['percent', 'fixed', 'free_delivery'].includes(req.body.type)) throw bad('Invalid promo type.');
+    const code = String(req.body.code).toUpperCase().replace(/\s+/g, '');
+    if (db.prepare('SELECT 1 FROM promos WHERE code = ?').get(code)) throw bad('That code already exists.');
+    db.prepare(
+      `INSERT INTO promos (code,description,type,value,min_subtotal,max_discount,usage_limit,used_count,active,expires_at,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(
+      code, req.body.description || null, req.body.type, Number(req.body.value), Number(req.body.min_subtotal || 0),
+      req.body.max_discount ? Number(req.body.max_discount) : null, req.body.usage_limit ? Number(req.body.usage_limit) : null,
+      0, req.body.active === false ? 0 : 1, req.body.expires_at || null, now()
+    );
+    audit(req, 'promo.create', 'promo', code, req.body);
+    res.status(201).json({ promo: db.prepare('SELECT * FROM promos WHERE code = ?').get(code) });
+  })
+);
+
+router.patch(
+  '/admin/promos/:code',
+  asyncHandler(async (req, res) => {
+    const promo = db.prepare('SELECT * FROM promos WHERE code = ?').get(req.params.code);
+    if (!promo) throw notFound('Promo not found');
+    if (req.body?.active !== undefined) db.prepare('UPDATE promos SET active = ? WHERE code = ?').run(req.body.active ? 1 : 0, promo.code);
+    res.json({ promo: db.prepare('SELECT * FROM promos WHERE code = ?').get(promo.code) });
+  })
+);
+
+router.get(
+  '/admin/banners',
+  asyncHandler(async (_req, res) => {
+    res.json({ banners: db.prepare('SELECT * FROM marketing_banners ORDER BY sort').all() });
+  })
+);
+
+router.post(
+  '/admin/banners',
+  asyncHandler(async (req, res) => {
+    requireFields(req.body || {}, ['title']);
+    const id = uid('bnr');
+    db.prepare(
+      'INSERT INTO marketing_banners (id,title,subtitle,image,cta_label,cta_link,bg_color,active,sort,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
+    ).run(
+      id, req.body.title, req.body.subtitle || null, req.body.image || null, req.body.cta_label || 'Shop now',
+      req.body.cta_link || '/', req.body.bg_color || '#176B55', req.body.active === false ? 0 : 1, Number(req.body.sort || 0), now()
+    );
+    audit(req, 'banner.create', 'banner', id, { title: req.body.title });
+    res.status(201).json({ banner: db.prepare('SELECT * FROM marketing_banners WHERE id = ?').get(id) });
+  })
+);
+
+router.patch(
+  '/admin/banners/:id',
+  asyncHandler(async (req, res) => {
+    const b = db.prepare('SELECT * FROM marketing_banners WHERE id = ?').get(req.params.id);
+    if (!b) throw notFound('Banner not found');
+    const allowed = ['title', 'subtitle', 'image', 'cta_label', 'cta_link', 'bg_color', 'sort'];
+    const patch = {};
+    for (const k of allowed) if (req.body?.[k] !== undefined) patch[k] = req.body[k];
+    if (req.body?.active !== undefined) patch.active = req.body.active ? 1 : 0;
+    if (Object.keys(patch).length) {
+      const sets = Object.keys(patch).map((k) => `${k} = @${k}`).join(', ');
+      db.prepare(`UPDATE marketing_banners SET ${sets} WHERE id = @id`).run({ ...patch, id: b.id });
+    }
+    res.json({ banner: db.prepare('SELECT * FROM marketing_banners WHERE id = ?').get(b.id) });
+  })
+);
+
+/** Broadcast notification — the only place admins can push to a whole segment. */
+router.post(
+  '/admin/notifications/broadcast',
+  asyncHandler(async (req, res) => {
+    const { title, body, role = 'customer' } = req.body || {};
+    requireFields(req.body || {}, ['title', 'body']);
+    const users = db.prepare('SELECT id FROM users WHERE role = ? AND status = ?').all(role, 'active');
+    for (const u of users) notify(u.id, { title, body, kind: 'broadcast' });
+    db.prepare('INSERT INTO campaigns (id,name,kind,payload,status,sent_count,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').run(
+      uid('cmp'), title, 'push', JSON.stringify({ title, body, role }), 'sent', users.length, req.user.id, now()
+    );
+    audit(req, 'notification.broadcast', 'campaign', null, { title, role, count: users.length });
+    res.json({ sent: users.length });
+  })
+);
+
+/* ---------------------------- settings & support -------------------------- */
+
+router.get(
+  '/admin/settings',
+  asyncHandler(async (_req, res) => {
+    res.json({ settings: settingsAll(), defaults: DEFAULT_SETTINGS });
+  })
+);
+
+router.put(
+  '/admin/settings',
+  asyncHandler(async (req, res) => {
+    const updates = req.body?.settings || req.body || {};
+    const applied = {};
+    for (const [k, v] of Object.entries(updates)) {
+      if (!(k in DEFAULT_SETTINGS)) continue;
+      setSetting(k, v);
+      applied[k] = v;
+    }
+    audit(req, 'settings.update', 'settings', null, applied);
+    res.json({ settings: settingsAll() });
+  })
+);
+
+router.get(
+  '/admin/tickets',
+  asyncHandler(async (req, res) => {
+    const tickets = db
+      .prepare(
+        `SELECT t.*, u.name AS customer_name, u.phone AS customer_phone FROM support_tickets t
+         JOIN users u ON u.id = t.customer_id ORDER BY (t.status = 'open') DESC, t.created_at DESC LIMIT 100`
+      )
+      .all();
+    for (const t of tickets) t.messages = db.prepare('SELECT * FROM support_messages WHERE ticket_id = ? ORDER BY created_at').all(t.id);
+    res.json({ tickets });
+  })
+);
+
+router.post(
+  '/admin/tickets/:id/reply',
+  asyncHandler(async (req, res) => {
+    requireFields(req.body || {}, ['body']);
+    const ticket = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(req.params.id);
+    if (!ticket) throw notFound('Ticket not found');
+    db.prepare('INSERT INTO support_messages (id,ticket_id,sender_id,sender_role,body,created_at) VALUES (?,?,?,?,?,?)').run(
+      uid('msg'), ticket.id, req.user.id, 'admin', req.body.body, now()
+    );
+    db.prepare("UPDATE support_tickets SET status = 'pending', updated_at = ? WHERE id = ?").run(now(), ticket.id);
+    notify(ticket.customer_id, { title: `Support replied — ${ticket.subject}`, body: String(req.body.body).slice(0, 120), kind: 'support', orderId: ticket.order_id });
+    res.json({ ok: true });
+  })
+);
+
+router.post(
+  '/admin/tickets/:id/resolve',
+  asyncHandler(async (req, res) => {
+    const ticket = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(req.params.id);
+    if (!ticket) throw notFound('Ticket not found');
+    db.prepare("UPDATE support_tickets SET status = 'resolved', resolution = ?, updated_at = ? WHERE id = ?").run(
+      req.body?.resolution || 'Resolved', now(), ticket.id
+    );
+    audit(req, 'ticket.resolve', 'ticket', ticket.id, { resolution: req.body?.resolution });
+    res.json({ ok: true });
+  })
+);
+
+router.get(
+  '/admin/audit-logs',
+  asyncHandler(async (req, res) => {
+    const { limit, offset } = paginate(req, 100);
+    res.json({
+      logs: db.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset),
+      total: db.prepare('SELECT COUNT(*) c FROM audit_logs').get().c,
+    });
+  })
+);
+
+/* ------------------------------- categories ------------------------------ */
+
+router.post(
+  '/admin/categories',
+  asyncHandler(async (req, res) => {
+    requireFields(req.body || {}, ['name']);
+    const id = uid('cat');
+    db.prepare('INSERT INTO categories (id,name,slug,icon,parent_id,sort,active) VALUES (?,?,?,?,?,?,?)').run(
+      id, req.body.name, slugify(req.body.name), req.body.icon || '🛍️', req.body.parent_id || null, Number(req.body.sort || 0), 1
+    );
+    audit(req, 'category.create', 'category', id, { name: req.body.name });
+    res.status(201).json({ category: db.prepare('SELECT * FROM categories WHERE id = ?').get(id) });
+  })
+);
+
+export default router;

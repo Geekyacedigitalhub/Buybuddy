@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, naira, timeAgo, fmtAddress, pretty } from '../../lib/api.js';
+import { api, naira, timeAgo, fmtAddress, pretty, getApiBase, setApiBase, isNativeApp } from '../../lib/api.js';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
   useAuth, useToast,
@@ -104,6 +104,20 @@ export function Account() {
           <Button variant="ghost" onClick={logout}><Icon name="logout" size={16} /> Sign out</Button>
         </div>
       </div>
+
+      {isNativeApp() && (
+        <div className="card col" style={{ gap: 8 }}>
+          <div className="h3">Server</div>
+          <div className="tiny muted mono" style={{ wordBreak: 'break-all' }}>{getApiBase() || 'not set'}</div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setApiBase(''); window.location.replace('/'); }}
+          >
+            Change server address
+          </Button>
+        </div>
+      )}
 
       <p className="tiny muted center">BUYBUDDY v1.0 · Lagos, Nigeria · support@buybuddy.ng</p>
 

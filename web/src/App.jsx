@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, CartProvider, Logo, Icon, useAuth, useCart, Loading, ToastProvider } from './lib/ui.jsx';
-import { naira } from './lib/api.js';
+import { naira, hasApiBase, isNativeApp } from './lib/api.js';
+import ServerSetup from './screens/ServerSetup.jsx';
 
 import AuthScreen from './screens/Auth.jsx';
 import { Home, Browse, StorePage, ProductPage, SearchPage } from './screens/customer/Shop.jsx';
@@ -142,10 +143,14 @@ function LoginRoute() {
 }
 
 export default function App() {
+  // Installed app with no server chosen yet: ask once, before anything fetches.
+  const needsServer = isNativeApp() && !hasApiBase();
+
   return (
     <ToastProvider>
       <AuthProvider>
         <CartProvider>
+          {needsServer ? <ServerSetup /> : (
           <HashRouter>
             <Routes>
               <Route path="/login" element={<LoginRoute />} />
@@ -184,6 +189,7 @@ export default function App() {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </HashRouter>
+          )}
         </CartProvider>
       </AuthProvider>
     </ToastProvider>

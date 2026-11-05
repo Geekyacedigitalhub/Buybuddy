@@ -1,4 +1,57 @@
-const BASE = import.meta.env.VITE_API_URL || '';
+/* --------------------------------------------------------------------------
+ * API base URL
+ * Web build: same origin ('' → relative requests).
+ * Installed app (Capacitor): the app is bundled inside the phone, so it needs an
+ * absolute server address. That address is chosen at runtime on first launch and
+ * stored locally, which means one APK works against staging, production or a
+ * laptop on the same Wi-Fi — no rebuild.
+ * ------------------------------------------------------------------------ */
+const ENV_BASE = import.meta.env.VITE_API_URL || '';
+const RUNTIME_KEY = 'bb_api_base';
+
+const normaliseBase = (url) => {
+  const v = String(url || '').trim().replace(/\/+$/, '');
+  if (!v) return '';
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+};
+
+let runtimeBase = (() => {
+  try { return localStorage.getItem(RUNTIME_KEY) || ''; } catch { return ''; }
+})();
+
+export const getApiBase = () => runtimeBase || ENV_BASE;
+
+export const setApiBase = (url) => {
+  const clean = normaliseBase(url);
+  runtimeBase = clean;
+  try {
+    if (clean) localStorage.setItem(RUNTIME_KEY, clean);
+    else localStorage.removeItem(RUNTIME_KEY);
+  } catch { /* private mode */ }
+  return clean;
+};
+
+export const hasApiBase = () => Boolean(getApiBase());
+
+/** True inside the installed Android/iOS app. */
+export const isNativeApp = () => {
+  if (typeof window === 'undefined') return false;
+  const cap = window.Capacitor;
+  if (cap?.isNativePlatform?.() || cap?.platform === 'android' || cap?.platform === 'ios') return true;
+  // Capacitor serves the bundled app from https://localhost — no real site lives
+  // there, so relative API calls cannot work and we must ask for a server.
+  return window.location.protocol === 'https:' && window.location.hostname === 'localhost';
+};
+
+/** Turn a server-relative asset path (/uploads/x.jpg) into a full URL when needed. */
+export const assetUrl = (p) => {
+  if (!p) return p;
+  if (/^(https?:|data:|blob:)/i.test(p)) return p;
+  if (p.startsWith('/uploads')) return `${getApiBase()}${p}`;
+  return p;
+};
+
+const BASE = () => getApiBase();
 
 let authToken = localStorage.getItem('bb_token') || null;
 
@@ -18,7 +71,7 @@ export class ApiError extends Error {
 }
 
 async function request(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
-  const res = await fetch(BASE + path, {
+  const res = await fetch(BASE() + path, {
     method,
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),

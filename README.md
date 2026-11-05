@@ -21,14 +21,20 @@ Everything below runs against a real database with real business rules:
 
 | Role | What you can actually do in the app |
 |---|---|
-| 📱 **Installable** | PWA manifest, maskable icons, service worker with an offline shell, in-app **Install** button + home-screen banner, and long-press shortcuts to *Shop for me* / *My orders* / *Rewards* |
+| 📱 **Android app** | Signed `.apk` in Releases, own icon + splash, bundled offline, runtime server-address setup, hardware back button. iOS builds from a Mac |
+| 📱 **Installable (PWA)** | PWA manifest, maskable icons, service worker with an offline shell, in-app **Install** button + home-screen banner, and long-press shortcuts to *Shop for me* / *My orders* / *Rewards* |
 | 🛍️ **Customer** | Earn **loyalty points** on every completed order and spend them at checkout, invite friends with a **referral code** (both sides paid), **schedule a delivery** up to 7 days ahead, **save a shopping list** and reorder in one tap, browse 10 categories / 10 stores / 60+ products, search & filter, cart (single-store rule), checkout with promo codes and a full fee breakdown, pay by card (sandbox), wallet or cash, build a **"Shop for me"** request with photos and a budget, approve or reject each substitution, track the rider on a map, chat, use a delivery PIN, rate, reorder, manage a wallet and support tickets |
 | 🛒 **Shopper** | Go online, receive offers, accept (atomically — two shoppers cannot take the same job), work the shopping list capturing prices and substitutions, submit the basket for approval, upload the store receipt, hand to a rider, track earnings and request withdrawals |
 | 🛵 **Rider** | Accept delivery offers, pickup → in transit → deliver with the customer's 4-digit PIN (wrong PIN is rejected), attach proof photos, see earnings per delivery |
 | 🏪 **Merchant** | Manage a store, full product catalogue + stock, accept/prepare/reject orders (rejection restores stock and refunds), toggle open/closed, view settlements net of commission |
 | 🛡️ **Admin** | KPIs with GMV **separated from** platform revenue, order management with assignment override and refunds, approve merchants, verify shoppers/riders, suspend accounts (revokes sessions), payouts, promos, banners, push broadcasts, every fee as live config, support inbox, and an audit log of every privileged action |
 
-**Installable on a phone.** BUYBUDDY is a PWA — open it on Android Chrome or iPhone Safari and
+**A real Android app.** The `mobile/` folder builds an installable `.apk`
+(Capacitor shell around the same React app) — download it from
+[Releases](https://github.com/Geekyacedigitalhub/Buybuddy/releases), install it, enter your
+server address once. See [`mobile/README.md`](mobile/README.md).
+
+**Installable on a phone as a PWA too.** BUYBUDDY is a PWA — open it on Android Chrome or iPhone Safari and
 add it to the home screen, full-screen, with launcher shortcuts and an offline shell. One guide:
 [`docs/MOBILE_INSTALL.md`](docs/MOBILE_INSTALL.md). No store review needed.
 

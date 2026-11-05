@@ -1,0 +1,22 @@
+{
+  "appId": "ng.buybuddy.app",
+  "appName": "BUYBUDDY",
+  "webDir": "../web/dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "backgroundColor": "#176B55",
+      "showSpinner": false
+    }
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}

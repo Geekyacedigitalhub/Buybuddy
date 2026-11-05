@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BUYBUDDY</string>
+    <string name="title_activity_main">BUYBUDDY</string>
+    <string name="package_name">ng.buybuddy.app</string>
+    <string name="custom_url_scheme">ng.buybuddy.app</string>
+</resources>

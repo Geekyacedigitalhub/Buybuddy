@@ -14,3 +14,18 @@ coverage/
 # Until then the file stays on disk but out of git, so ordinary `git add -A`
 # commits cannot fail with "refusing to allow a PAT to create or update workflow".
 .github/workflows/ci.yml
+
+# Mobile app (Capacitor) — build output, not source
+mobile/node_modules/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/android/capacitor-cordova-android-plugins/
+*.apk
+*.aab
+*.keystore
+*.jks

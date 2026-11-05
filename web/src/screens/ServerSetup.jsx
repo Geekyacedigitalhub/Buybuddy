@@ -2,16 +2,24 @@ import React, { useState } from 'react';
 import { getApiBase, setApiBase } from '../lib/api.js';
 
 /**
- * First-run setup for the installed mobile app.
+ * First-run onboarding for the installed mobile app.
  *
- * A bundled app has to be told where its server lives — the phone has no
- * "current website" to make relative requests against. We ask once, verify the
- * address really is a BUYBUDDY server, then never ask again on that device.
+ * A bundled app has no origin to make relative requests against, so it has to be
+ * told where its server lives — once. This is written as a branded welcome screen
+ * rather than a settings form, because it is the first thing a customer ever sees.
  */
+
+const BENEFITS = [
+  ['⚡', 'Groceries in minutes', 'Shop 10 categories from stores around you'],
+  ['📸', 'Shop for me', 'Send a photo or a list — a buddy finds it and prices it'],
+  ['🛵', 'Live tracking', 'Follow your rider to the door and pay on delivery'],
+];
+
 export default function ServerSetup() {
   const [url, setUrl] = useState(getApiBase() || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [showField, setShowField] = useState(false);
 
   const connect = async (e) => {
     e?.preventDefault();
@@ -19,7 +27,7 @@ export default function ServerSetup() {
     setBusy(true);
     try {
       const clean = setApiBase(url);
-      if (!clean) throw new Error('Enter your BUYBUDDY server address.');
+      if (!clean) throw new Error('Enter your BUYBUDDY address to continue.');
       const res = await fetch(`${clean}/api/health`, { headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error(`That address answered with ${res.status}. Check it and try again.`);
       const data = await res.json();
@@ -29,7 +37,7 @@ export default function ServerSetup() {
       setApiBase('');
       setError(
         err.message ||
-        'Could not reach that address. Make sure the server is running and the address starts with https://'
+        'Could not reach that address. Check it starts with https:// and that the server is running.'
       );
     } finally {
       setBusy(false);
@@ -37,73 +45,72 @@ export default function ServerSetup() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh', background: 'var(--green-800, #176B55)', display: 'grid', placeItems: 'center',
-      padding: 22, fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
-    }}>
-      <form
-        onSubmit={connect}
-        style={{ background: '#fff', borderRadius: 20, padding: 22, width: '100%', maxWidth: 420, boxShadow: '0 18px 50px rgba(0,0,0,.28)' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: 12, background: '#176B55', display: 'grid', placeItems: 'center',
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round">
-              <path d="M6.5 8.5h11l-1 11h-9z" />
-              <path d="M9.3 8.5V6.8a2.7 2.7 0 0 1 5.4 0v1.7" strokeLinecap="round" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#0B2F27' }}>BUYBUDDY</div>
-            <div style={{ fontSize: 11.5, color: '#6B7C76', letterSpacing: '.06em', fontWeight: 700 }}>CONNECT TO YOUR SERVER</div>
-          </div>
+    <div className="onboard">
+      <div className="onboard-glow onboard-glow-a" />
+      <div className="onboard-glow onboard-glow-b" />
+
+      <header className="onboard-head">
+        <div className="onboard-mark" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round">
+            <path d="M6.5 8.5h11l-1 11h-9z" />
+            <path d="M9.3 8.5V6.8a2.7 2.7 0 0 1 5.4 0v1.7" strokeLinecap="round" />
+          </svg>
         </div>
+        <div>
+          <div className="onboard-word">BUYBUDDY</div>
+          <div className="onboard-tag">Your Personal Shopping Partner</div>
+        </div>
+      </header>
 
-        <p style={{ fontSize: 13.5, lineHeight: 1.6, color: '#4A5A54', margin: '12px 0 16px' }}>
-          One-time setup. Enter the web address of your BUYBUDDY server — the app will remember it
-          and you will not see this screen again.
-        </p>
+      <h1 className="onboard-title">
+        Anything you need.<br />Delivered by a buddy.
+      </h1>
 
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0B2F27', marginBottom: 6 }}>
-          Server address
-        </label>
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://buybuddy-xxxx.onrender.com"
-          inputMode="url"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          style={{
-            width: '100%', padding: '13px 14px', borderRadius: 12, border: '1.5px solid #D9E2DE',
-            fontSize: 15, outline: 'none', boxSizing: 'border-box', color: '#0B2F27',
-          }}
-        />
+      <ul className="onboard-list">
+        {BENEFITS.map(([icon, title, sub]) => (
+          <li key={title}>
+            <span className="onboard-ico" aria-hidden="true">{icon}</span>
+            <span>
+              <b>{title}</b>
+              <em>{sub}</em>
+            </span>
+          </li>
+        ))}
+      </ul>
 
-        {error && (
-          <div style={{ marginTop: 12, background: '#FDECEC', color: '#B42318', padding: '10px 12px', borderRadius: 10, fontSize: 12.5, lineHeight: 1.5 }}>
-            {error}
-          </div>
+      <div className="onboard-card">
+        {!showField ? (
+          <button className="onboard-cta" onClick={() => setShowField(true)}>
+            Get started
+          </button>
+        ) : (
+          <form onSubmit={connect}>
+            <label className="onboard-label" htmlFor="server">Your BUYBUDDY address</label>
+            <input
+              id="server"
+              className="onboard-input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://buybuddy.yourdomain.com"
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+            />
+            {error && <div className="onboard-error">{error}</div>}
+            <button className="onboard-cta" type="submit" disabled={busy}>
+              {busy ? 'Connecting…' : 'Continue'}
+            </button>
+          </form>
         )}
-
-        <button
-          type="submit"
-          disabled={busy}
-          style={{
-            width: '100%', marginTop: 16, padding: '14px 16px', borderRadius: 12, border: 'none',
-            background: busy ? '#8FB3A8' : '#176B55', color: '#fff', fontSize: 15, fontWeight: 700,
-          }}
-        >
-          {busy ? 'Checking…' : 'Connect'}
-        </button>
-
-        <p style={{ fontSize: 11.5, color: '#8A9994', marginTop: 14, lineHeight: 1.5, textAlign: 'center' }}>
-          Don't have a server yet? Deploy one free from the project README — you get a
-          permanent https address in about three minutes.
+        <p className="onboard-fine">
+          One-time setup. We store this address on this device and never ask again —
+          change it later in Account settings.
         </p>
-      </form>
+      </div>
+
+      <footer className="onboard-foot">Lagos • Naira • Secured by Paystack</footer>
     </div>
   );
 }

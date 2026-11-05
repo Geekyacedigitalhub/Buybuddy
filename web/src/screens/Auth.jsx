@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../lib/api.js';
+import { api, isNativeApp } from '../lib/api.js';
 import { Button, Field, Icon, Input, Logo, Select, useAuth, useToast } from '../lib/ui.jsx';
 
 const DEMOS = [
@@ -214,18 +214,25 @@ export default function AuthScreen() {
           </button>
         </div>
 
-        <div className="divider" />
-        <div className="tiny muted" style={{ marginBottom: 8, fontWeight: 700, letterSpacing: '0.08em' }}>DEMO ACCOUNTS — PASSWORD: Password123!</div>
-        <div className="row wrap" style={{ gap: 8 }}>
-          {DEMOS.map((d) => (
-            <button key={d.email} className="chip" disabled={busy} onClick={() => quick(d.email)}>
-              <span style={{ marginRight: 6 }}>{d.icon}</span>{d.role}
-            </button>
-          ))}
-        </div>
-        <p className="tiny muted" style={{ marginTop: 14, lineHeight: 1.6 }}>
-          <Icon name="check" size={12} style={{ verticalAlign: -1 }} /> Sandbox checkout is enabled — card payments run
-          through BUYBUDDY's built-in test gateway until Paystack keys are configured.
+        {/* Demo shortcuts are for the web preview only — an installed customer app
+            must never advertise test logins. */}
+        {!isNativeApp() && (
+          <>
+            <div className="divider" />
+            <div className="tiny muted" style={{ marginBottom: 8, fontWeight: 700, letterSpacing: '0.08em' }}>DEMO ACCOUNTS — PASSWORD: Password123!</div>
+            <div className="row wrap" style={{ gap: 8 }}>
+              {DEMOS.map((d) => (
+                <button key={d.email} className="chip" disabled={busy} onClick={() => quick(d.email)}>
+                  <span style={{ marginRight: 6 }}>{d.icon}</span>{d.role}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="tiny muted" style={{ marginTop: 16, lineHeight: 1.6 }}>
+          <Icon name="lock" size={12} style={{ verticalAlign: -1 }} /> Payments are processed securely.
+          By continuing you agree to our Terms and Privacy Policy.
         </p>
       </section>
     </div>

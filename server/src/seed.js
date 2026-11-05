@@ -12,11 +12,77 @@ import { uid, now, orderCode, slugify, fakePin } from './lib/util.js';
  * Run: npm run seed
  */
 
-const img = (emoji, c1 = '#E8F3EE', c2 = '#F6F1E7') =>
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="400" height="400" rx="28" fill="url(#g)"/><circle cx="200" cy="200" r="118" fill="#ffffff" opacity="0.55"/><text x="200" y="252" font-size="150" text-anchor="middle" font-family="'Apple Color Emoji','Segoe UI Emoji',sans-serif">${emoji}</text></svg>`
+/* Product imagery.
+ * Real photography ships in web/public/img/products/ and is served from the same
+ * origin, so it works identically on the web and inside the installed app.
+ * Anything without a photo yet falls back to a designed tile (brand-tinted
+ * gradient, large glyph, soft rings) — deliberately illustrated, not a broken
+ * image. Swap in client photography by adding a file and a line to PHOTO below.
+ */
+const PHOTO = [
+  // most specific first — "Jollof Rice & Fried Chicken" must hit jollof, not chicken
+  [/jollof/i, 'jollof'],
+  [/egusi|pepper soup/i, 'egusi'],
+  [/eggs/i, 'eggs'],
+  [/peak milk|milk powder/i, 'milk'],
+  [/indomie|noodles/i, 'noodles'],
+  [/tomato/i, 'tomatoes'],
+  [/onion/i, 'tomatoes'],
+  [/chicken/i, 'chicken'],
+  [/spinach|ugu|leafy/i, 'vegetables'],
+  [/bread/i, 'bread'],
+  [/semovita|semolina|rice/i, 'rice'],
+];
+
+const photoFor = (name) => {
+  const hit = PHOTO.find(([re]) => re.test(name));
+  return hit ? `/img/products/${hit[1]}.jpg` : null;
+};
+
+const TILE_TONES = {
+  'Groceries & Supermarket': ['#E7F1EC', '#D3E7DC'],
+  'Food & Restaurants': ['#FBEDE3', '#F6DCC8'],
+  'Fashion & Clothing': ['#F2EAF6', '#E3D5EE'],
+  'Electronics & Gadgets': ['#E8EEF7', '#D6E1F0'],
+  'Pharmacy & Health': ['#E6F3F4', '#CDE7E9'],
+  'Beauty & Personal Care': ['#FBEAF0', '#F3D6E2'],
+  'Home & Household': ['#F0F0EA', '#E1E1D6'],
+  'Drinks & Beverages': ['#EAF2FA', '#D5E7F6'],
+  'Baby Products': ['#FDF2E4', '#F7E2C6'],
+  'Shop For Me': ['#E9F3EF', '#D5E8DF'],
+};
+
+const tile = (emoji, category = 'Groceries & Supermarket') => {
+  const [c1, c2] = TILE_TONES[category] || TILE_TONES['Groceries & Supermarket'];
+  return (
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="520" height="520" viewBox="0 0 520 520">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/>
+          </linearGradient>
+          <radialGradient id="s" cx="0.5" cy="0.35" r="0.65">
+            <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+            <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="520" height="520" fill="url(#g)"/>
+        <circle cx="410" cy="96" r="120" fill="#ffffff" opacity="0.20"/>
+        <circle cx="92" cy="452" r="96" fill="#ffffff" opacity="0.16"/>
+        <rect width="520" height="520" fill="url(#s)"/>
+        <text x="260" y="312" font-size="196" text-anchor="middle"
+              font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">${emoji}</text>
+      </svg>`
+    )
   );
+};
+
+const img = (emoji, category) => tile(emoji, category);
+
+/* Home hero art: a photo when we have one, otherwise a rich brand gradient. */
+const BANNER_PHOTOS = ['/img/products/jollof.jpg', '/img/products/tomatoes.jpg', '/img/products/eggs.jpg'];
+const bannerArt = (i) => BANNER_PHOTOS[i % BANNER_PHOTOS.length];
 
 const daysAgo = (n, hour = 12) => {
   const d = new Date(Date.now() - n * 864e5);
@@ -247,7 +313,7 @@ export async function main({ reset: resetDb = true } = {}) {
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).run(
       sid, mid, s.name, `${slugify(s.name)}-${storeIdx}`, `${s.name} — ${s.cat} delivered across Lagos in minutes.`,
-      img(s.emoji), img(s.emoji, '#DCEBE4', '#EAF2EE'), s.area, 'Lagos', '+2348030000000', 'active', 1,
+      img(s.emoji, s.cat), img(s.emoji, s.cat), s.area, 'Lagos', '+2348030000000', 'active', 1,
       s.rating, 40 + storeIdx * 7, 0.12, '08:00', '22:00', 15 + storeIdx, 1000 + storeIdx * 500, daysAgo(60 - storeIdx)
     );
     storeIdx += 1;
@@ -330,7 +396,7 @@ export async function main({ reset: resetDb = true } = {}) {
       ).run(
         id, storeIds[s.name], catIds[cat], name,
         `${name} — sourced fresh and delivered by your BUYBUDDY shopper. Quality checked before dispatch.`,
-        price, compare, img(emoji), 'each', 40 + Math.floor(Math.random() * 80), 'active',
+        price, compare, photoFor(name) || img(emoji, cat), 'each', 40 + Math.floor(Math.random() * 80), 'active',
         `${s.cat}, ${name.split(' ')[0]}`.toLowerCase(), 4 + Math.random(), 5 + Math.floor(Math.random() * 60),
         daysAgo(20 + Math.random() * 20)
       );
@@ -360,7 +426,7 @@ export async function main({ reset: resetDb = true } = {}) {
   banners.forEach(([title, subtitle, color, emoji], i) => {
     db.prepare(
       'INSERT INTO marketing_banners (id,title,subtitle,image,cta_label,cta_link,bg_color,active,sort,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
-    ).run(uid('bnr'), title, subtitle, img(emoji, '#FFFFFF', '#EEF5F1'), 'Shop now', '/', color, 1, i, daysAgo(10));
+    ).run(uid('bnr'), title, subtitle, bannerArt(i), 'Shop now', '/', color, 1, i, daysAgo(10));
   });
 
   /* ------------------------------- orders ------------------------------- */

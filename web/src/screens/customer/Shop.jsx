@@ -68,19 +68,30 @@ export function Home() {
 
       {banner && (
         <button
-          className="hero"
+          className="hero hero-photo"
           onClick={() => nav('/shop-for-me')}
-          style={{ textAlign: 'left', border: 'none', cursor: 'pointer', background: `linear-gradient(135deg, ${banner.bg_color}, #0d3d31)` }}
+          style={{ textAlign: 'left', border: 'none', cursor: 'pointer', padding: 0, overflow: 'hidden', position: 'relative' }}
         >
-          <div className="row-between" style={{ alignItems: 'flex-start' }}>
-            <div style={{ maxWidth: 340 }}>
+          {banner.image && !banner.image.startsWith('data:') ? (
+            <img
+              src={banner.image}
+              alt=""
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+              loading="lazy"
+            />
+          ) : null}
+          <div style={{
+            position: 'relative',
+            background: `linear-gradient(100deg, ${banner.bg_color}F2 8%, ${banner.bg_color}B3 46%, ${banner.bg_color}10 92%)`,
+            padding: '20px 18px', minHeight: 132, display: 'flex', alignItems: 'center',
+          }}>
+            <div style={{ maxWidth: 320 }}>
               <div style={{ fontSize: 21, fontWeight: 780, letterSpacing: '-0.4px' }}>{banner.title}</div>
-              <div style={{ opacity: 0.85, marginTop: 6, fontSize: 13.5, lineHeight: 1.5 }}>{banner.subtitle}</div>
+              <div style={{ opacity: 0.9, marginTop: 6, fontSize: 13.5, lineHeight: 1.5 }}>{banner.subtitle}</div>
               <span className="badge" style={{ marginTop: 14, background: '#fff', color: 'var(--green-800)' }}>
                 {banner.cta_label} <Icon name="right" size={13} />
               </span>
             </div>
-            <span style={{ fontSize: 46, opacity: 0.9 }}>{banner.image ? '🛍️' : '🛍️'}</span>
           </div>
         </button>
       )}

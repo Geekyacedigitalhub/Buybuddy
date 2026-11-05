@@ -33,7 +33,7 @@ If your server is not online yet, deploy it in ~3 minutes for free
 
 ## Installing the APK on a phone
 
-1. Download `BUYBUDDY-v1.0.apk` from the
+1. Download `BUYBUDDY-v1.1.apk` from the
    [Releases page](https://github.com/Geekyacedigitalhub/Buybuddy/releases).
 2. Open the downloaded file. Android will warn *"For your security, your phone is
    not allowed to install unknown apps from this source"* — that warning is

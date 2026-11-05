@@ -26,6 +26,19 @@ configurable at runtime, the same APK works against a demo server, a staging
 server, or a laptop on the same Wi-Fi — no rebuild needed. In the app you can
 change it later under **Account → Server → Change server address**.
 
+### Removing the prompt entirely (production build)
+
+Once the server has a permanent address, bake it in and the app opens straight to
+the sign-in screen — exactly like a Play Store app:
+
+```bash
+mobile/scripts/build-with-server.sh https://buybuddy.onrender.com
+```
+
+That sets `VITE_API_URL` at build time; the first-run screen is skipped because the
+app already knows where home is (the prompt stays available under
+**Account → Server** if the address ever changes).
+
 If your server is not online yet, deploy it in ~3 minutes for free
 (see the root `README.md`), then paste the address it gives you.
 

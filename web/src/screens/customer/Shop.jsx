@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, naira, shortDate } from '../../lib/api.js';
+import { InstallBanner } from '../../components/InstallApp.jsx';
 import {
   Badge, Button, Empty, Icon, Loading, Modal, Money, SectionHead, Skeleton, Stars, StatusBadge,
   Textarea, useAuth, useCart, useToast,
@@ -62,6 +63,8 @@ export function Home() {
           <button className="btn btn-primary btn-sm" type="submit">Search</button>
         </form>
       </div>
+
+      <InstallBanner />
 
       {banner && (
         <button

@@ -582,3 +582,41 @@ test('rewards summary endpoint powers the account screen', async () => {
   assert.ok(me.body.referral_code);
   assert.equal(me.body.loyalty.enabled, true);
 });
+
+test('PWA: manifest, icons and service worker are served correctly', async () => {
+  const manifestRes = await fetch(base + '/manifest.webmanifest');
+  assert.equal(manifestRes.status, 200);
+  assert.match(manifestRes.headers.get('content-type') || '', /manifest\+json/);
+  assert.equal(manifestRes.headers.get('cache-control'), 'no-cache, no-store, must-revalidate', 'the manifest must never be cached');
+
+  const manifest = await manifestRes.json();
+  assert.ok(manifest.name && manifest.short_name, 'installable apps need a name and short name');
+  assert.equal(manifest.display, 'standalone', 'installs without browser chrome');
+  assert.equal(manifest.start_url, '/');
+  assert.ok(manifest.icons.some((i) => i.sizes === '192x192'), '192px icon required for Android');
+  assert.ok(manifest.icons.some((i) => i.sizes === '512x512'), '512px icon required for splash screens');
+  assert.ok(manifest.icons.some((i) => i.purpose === 'maskable'), 'maskable icon required for adaptive launchers');
+  assert.ok(Array.isArray(manifest.shortcuts) && manifest.shortcuts.length > 0, 'long-press shortcuts are registered');
+
+  // every icon the manifest promises must actually exist
+  for (const icon of manifest.icons) {
+    const res = await fetch(base + icon.src);
+    assert.equal(res.status, 200, `missing icon: ${icon.src}`);
+    assert.equal(res.headers.get('content-type'), 'image/png');
+  }
+
+  const swRes = await fetch(base + '/sw.js');
+  assert.equal(swRes.status, 200);
+  assert.match(swRes.headers.get('content-type') || '', /javascript/);
+  assert.equal(swRes.headers.get('service-worker-allowed'), '/', 'service worker scope must cover the whole app');
+  assert.equal(swRes.headers.get('cache-control'), 'no-cache, no-store, must-revalidate', 'a cached service worker pins users to an old build');
+  const sw = await swRes.text();
+  assert.ok(sw.includes("addEventListener('fetch'"), 'the worker intercepts fetch');
+  assert.ok(!/pathname\.startsWith\('\/api'\)\s*\)\s*event\.respondWith/.test(sw), 'API responses must never be served from cache');
+
+  // the built shell must advertise the manifest and the iOS install meta tags
+  const html = await (await fetch(base + '/')).text();
+  assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
+  assert.match(html, /apple-touch-icon/);
+  assert.match(html, /apple-mobile-web-app-capable/);
+});

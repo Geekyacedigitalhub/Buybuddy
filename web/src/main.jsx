@@ -8,3 +8,14 @@ createRoot(document.getElementById('root')).render(
     <App />
   </React.StrictMode>
 );
+
+/* Register the service worker so the app can be installed to a home screen and
+   still open on a flaky connection. Registration only happens on https or
+   localhost — browsers refuse service workers anywhere else. */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* a failed registration must never break the app */
+    });
+  });
+}

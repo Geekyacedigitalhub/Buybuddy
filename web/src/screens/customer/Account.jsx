@@ -6,6 +6,7 @@ import {
   useAuth, useToast,
 } from '../../lib/ui.jsx';
 import { ProductCard } from './Shop.jsx';
+import { InstallAppCard } from '../../components/InstallApp.jsx';
 
 /* -------------------------------- account -------------------------------- */
 
@@ -53,6 +54,7 @@ export function Account() {
 
   return (
     <div className="page page-tight col">
+      <InstallAppCard />
       <div className="card row" style={{ gap: 14 }}>
         <div style={{
           width: 58, height: 58, borderRadius: 18, background: 'linear-gradient(140deg,var(--green-600),var(--green-800))',

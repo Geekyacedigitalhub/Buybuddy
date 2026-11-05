@@ -1,0 +1,55 @@
+# Render Blueprint — one-click hosted deployment for BUYBUDDY.
+#
+# How to use:
+#   1. Make sure this repo is on GitHub (it is).
+#   2. Open:  https://render.com/deploy?repo=https://github.com/Geekyacedigitalhub/Buybuddy
+#   3. Sign in with GitHub (free account), click "Apply".
+#   4. In ~3 minutes you get a permanent https link like
+#      https://buybuddy-xxxx.onrender.com  — open it on your phone and install it.
+#
+# Free plan notes:
+#   • the instance sleeps after ~15 minutes idle; the first visit then takes ~30s
+#   • there is no persistent disk, so SEED_IF_EMPTY rebuilds the demo marketplace
+#     automatically whenever the container restarts
+#   • for real customer data: add a paid disk (see the commented block) or move to
+#     Postgres (docs/POSTGRES_MIGRATION.md)
+
+services:
+  - type: web
+    name: buybuddy
+    runtime: node
+    plan: free
+    region: frankfurt            # closest Render region to Lagos
+    branch: main
+    buildCommand: npm install --workspaces --include-workspace-root && npm run build -w web
+    startCommand: npm start
+    healthCheckPath: /api/ready
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SEED_IF_EMPTY
+        value: "true"
+      - key: DISABLE_RATE_LIMIT
+        value: "false"
+      - key: LOG_REQUESTS
+        value: "true"
+      - key: CURRENCY
+        value: NGN
+      # Sessions stay valid across restarts. Render generates the value; never
+      # commit a real secret to the repository.
+      - key: JWT_SECRET
+        generateValue: true
+      # Real card payments — leave blank to keep the built-in sandbox gateway.
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      # Real SMS verification codes (Termii). Leave blank to keep dev OTP codes.
+      - key: SMS_API_KEY
+        sync: false
+    # Persistent storage for the SQLite file — needs a paid instance type.
+    # disk:
+    #   name: buybuddy-data
+    #   mountPath: /data
+    #   sizeGB: 1

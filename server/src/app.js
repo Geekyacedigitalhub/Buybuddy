@@ -121,8 +121,37 @@ export function createApp() {
   app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads'), { maxAge: '7d' }));
   const webDist = path.join(ROOT, '..', 'web', 'dist');
   if (fs.existsSync(webDist)) {
-    app.use(express.static(webDist, { index: false }));
-    app.get(/^\/(?!api|uploads).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+    /* PWA files must never be served stale: a cached service worker or manifest
+       pins users to an old build. Hashed assets, by contrast, are immutable. */
+    const noStore = (file) => (req, res, next) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Service-Worker-Allowed', '/');
+      if (file.endsWith('-sw') || file.endsWith('webmanifest')) {
+        res.setHeader('Content-Type', file.endsWith('webmanifest')
+          ? 'application/manifest+json; charset=utf-8'
+          : 'application/javascript; charset=utf-8');
+      }
+      next();
+    };
+
+    app.get('/sw.js', noStore('sw'), (_req, res) => res.sendFile(path.join(webDist, 'sw.js')));
+    app.get('/service-worker.js', noStore('sw'), (_req, res) => res.sendFile(path.join(webDist, 'sw.js')));
+    app.get('/manifest.webmanifest', noStore('webmanifest'), (_req, res) => res.sendFile(path.join(webDist, 'manifest.webmanifest')));
+
+    app.use(express.static(webDist, {
+      index: false,
+      setHeaders(res, filePath) {
+        if (filePath.includes(`${path.sep}assets${path.sep}`) || filePath.includes(`${path.sep}icons${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // content-hashed names
+        } else if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }));
+    app.get(/^\/(?!api|uploads).*/, (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(webDist, 'index.html'));
+    });
   }
 
   app.use((req, res) => res.status(404).json({ error: `No route for ${req.method} ${req.path}`, code: 'not_found' }));

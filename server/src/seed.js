@@ -193,7 +193,7 @@ const STORES = [
   },
 ];
 
-async function main() {
+export async function main({ reset: resetDb = true } = {}) {
   const shouldReset = process.argv.includes('--reset');
   if (shouldReset) reset();
   else migrate();
@@ -581,7 +581,10 @@ Demo accounts (password: Password123!)
 `);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only auto-run when executed directly (`npm run seed`), never when imported.
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('seed.js')) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

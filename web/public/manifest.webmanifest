@@ -1,0 +1,44 @@
+{
+  "id": "/",
+  "name": "BUYBUDDY — Your Personal Shopping Partner",
+  "short_name": "BUYBUDDY",
+  "description": "Groceries, food, fashion and pharmacy delivered across Lagos — or send a photo of anything and a BUYBUDDY shopper will find it, price it and bring it to your door.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#F5F7F4",
+  "theme_color": "#176B55",
+  "lang": "en-NG",
+  "dir": "ltr",
+  "categories": ["shopping", "food", "lifestyle"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Shop for me",
+      "short_name": "Shop for me",
+      "description": "Send a list or a photo and let a buddy shop it",
+      "url": "/shop-for-me",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My orders",
+      "short_name": "Orders",
+      "description": "Track a delivery or reorder",
+      "url": "/orders",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Points & referrals",
+      "short_name": "Rewards",
+      "description": "Points balance and your invite code",
+      "url": "/account/rewards",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

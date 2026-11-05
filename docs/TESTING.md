@@ -3,7 +3,7 @@
 ## Automated suite (runs today)
 
 ```bash
-npm test          # node --test, 19 integration tests
+npm test          # node --test, 20 integration tests
 ```
 
 The suite boots a **throwaway database**, seeds it, starts the real HTTP server and drives complete
@@ -56,6 +56,7 @@ in the audit log → suspend a customer and confirm their session is revoked.
 | `scheduled delivery: future windows accepted, invalid rejected` | quote echoes the slot; <1h and >7d windows are flagged; checkout refuses a bad window; the order stores `scheduled_for` |
 | `loyalty: points accrue, redeem, refund` | earn = `floor(subtotal/1000 × rate)` on completion, re-settling does not double-credit, minimum/balance guards reject abuse, the discount lands on the order, and cancelling returns the points |
 | `referrals: code links at signup, pays exactly once` | public code validation, ₦1,000 credited to the referrer on the invitee's first completed order, and **no second payout** on the invitee's next order |
+| `PWA: manifest, icons and service worker` | manifest served as `application/manifest+json` and never cached, 192/512/maskable icons all exist, service worker has whole-app scope, API responses are excluded from the cache, and the HTML advertises the manifest + iOS meta tags |
 | `rewards summary endpoint` | `/api/me/rewards` returns points, referral code and rules for the account screen |
 
 ## What still needs building (M7)

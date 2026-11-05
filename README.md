@@ -21,11 +21,16 @@ Everything below runs against a real database with real business rules:
 
 | Role | What you can actually do in the app |
 |---|---|
+| 📱 **Installable** | PWA manifest, maskable icons, service worker with an offline shell, in-app **Install** button + home-screen banner, and long-press shortcuts to *Shop for me* / *My orders* / *Rewards* |
 | 🛍️ **Customer** | Earn **loyalty points** on every completed order and spend them at checkout, invite friends with a **referral code** (both sides paid), **schedule a delivery** up to 7 days ahead, **save a shopping list** and reorder in one tap, browse 10 categories / 10 stores / 60+ products, search & filter, cart (single-store rule), checkout with promo codes and a full fee breakdown, pay by card (sandbox), wallet or cash, build a **"Shop for me"** request with photos and a budget, approve or reject each substitution, track the rider on a map, chat, use a delivery PIN, rate, reorder, manage a wallet and support tickets |
 | 🛒 **Shopper** | Go online, receive offers, accept (atomically — two shoppers cannot take the same job), work the shopping list capturing prices and substitutions, submit the basket for approval, upload the store receipt, hand to a rider, track earnings and request withdrawals |
 | 🛵 **Rider** | Accept delivery offers, pickup → in transit → deliver with the customer's 4-digit PIN (wrong PIN is rejected), attach proof photos, see earnings per delivery |
 | 🏪 **Merchant** | Manage a store, full product catalogue + stock, accept/prepare/reject orders (rejection restores stock and refunds), toggle open/closed, view settlements net of commission |
 | 🛡️ **Admin** | KPIs with GMV **separated from** platform revenue, order management with assignment override and refunds, approve merchants, verify shoppers/riders, suspend accounts (revokes sessions), payouts, promos, banners, push broadcasts, every fee as live config, support inbox, and an audit log of every privileged action |
+
+**Installable on a phone.** BUYBUDDY is a PWA — open it on Android Chrome or iPhone Safari and
+add it to the home screen, full-screen, with launcher shortcuts and an offline shell. One guide:
+[`docs/MOBILE_INSTALL.md`](docs/MOBILE_INSTALL.md). No store review needed.
 
 **Design:** forest green `#176B55`, white, `#F5F7F4` background, warm orange `#E4792F` accent, custom
 shopping-bag logo mark — per brief §8. Mobile-first for the apps, desktop layouts for the dashboards.
@@ -76,14 +81,15 @@ Then sign in with any demo account (**password: `Password123!`**):
 npm test
 ```
 
-19 integration tests run against a throwaway database and the real HTTP server — including the full
+20 integration tests run against a throwaway database and the real HTTP server — including the full
 merchant lifecycle, substitution approval, idempotent checkout replay, double-acceptance prevention,
 wrong-PIN rejection, webhook signature validation, role-based access control, **loyalty earn / redeem /
 refund**, **referral payout exactly once**, **scheduled-delivery validation**, **saved-list CRUD**,
-**rate limiting (429)** and the **`/api/ready`** probe.
+**rate limiting (429)**, the **`/api/ready`** probe, and the **PWA install contract**
+(manifest, icons, service-worker scope and no-cache headers).
 
 ```
-# tests 19   # pass 19   # fail 0
+# tests 20   # pass 20   # fail 0
 ```
 
 ---
@@ -124,6 +130,7 @@ Deep dives: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System diagram, data model, state machines, pricing, payments, scaling path, trade-offs |
 | [`docs/API.md`](docs/API.md) | All 131 endpoints with bodies, statuses and error codes |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Environments, env vars, Docker/VPS/PaaS, Paystack go-live checklist, backups, store submission, ops runbook |
+| [`docs/MOBILE_INSTALL.md`](docs/MOBILE_INSTALL.md) | How to put it on a phone: one-click hosting, Android/iPhone install steps, and the store-binary path |
 | [`docs/POSTGRES_MIGRATION.md`](docs/POSTGRES_MIGRATION.md) | The SQLite → Postgres path: what is already generated, type mapping, driver adapter, transaction conversion, data import, rollback, checklist |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | What is hardened today and the 8 things that must land before public launch |
 | [`docs/TESTING.md`](docs/TESTING.md) | The automated suite, plus a manual UAT script per role and the M7 test plan |

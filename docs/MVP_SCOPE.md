@@ -6,6 +6,8 @@ Maps **every** requirement in the development brief to a decision: **Built** (wo
 
 Legend: ✅ built · 🟡 partially built · ⬜ not started · 👤 client-side dependency
 
+**Scorecard after Release 2:** 115 ✅ built · 31 🟡 partial (each with a named reason, not a mystery) · 4 ⬜ not started · 5 👤 client-side. Nothing in the brief is unaccounted for.
+
 ---
 
 ## 3. Customer application
@@ -40,7 +42,7 @@ Legend: ✅ built · 🟡 partially built · ⬜ not started · 👤 client-side
 | 3.5 Shopper records unavailable items, photos, receipts | ✅ | Item status + receipts table |
 | 3.5 Approval history preserved, no silent charging | ✅ | `order_events` + payment adjustments required for increases |
 | 3.6 Cart add/remove/update | ✅ | Server-side quantity caps & stock checks |
-| 3.6 Promo/referral codes | 🟡 | Promo codes ✅; referral codes R2 |
+| 3.6 Promo/referral codes | ✅ | Promo codes + referral codes (validated at signup, rewards paid once — see `docs/API.md`) |
 | 3.6 Full fee breakdown before payment | ✅ | Subtotal, service, delivery, VAT, discount, total |
 | 3.6 Address & payment selection | ✅ | Inline address creation |
 | 3.6 Order reference & receipt | ✅ | `BB-XXXXXXX` code + receipts view |
@@ -165,7 +167,7 @@ Legend: ✅ built · 🟡 partially built · ⬜ not started · 👤 client-side
 | Automated backups + tested restore | 👤 (runbook in `DEPLOYMENT.md`; must be executed on real infra) |
 | Error logging, monitoring, alerting | 🟡 (structured error logs + audit; Sentry R2) |
 | API + env documentation | ✅ (`API.md`, `.env.example`) |
-| Rate limiting, input validation, web security | 🟡 (validation ✅; rate limiting/WAF before launch) |
+| Rate limiting, input validation, web security | 🟡 (validation ✅, rate limiting ✅, security headers ✅; **WAF at the edge** before launch) |
 | Separate dev/staging/prod | 👤 (defined; provisioning required) |
 | Data retention/deletion under NDPA 2023 | 👤 (policy + tooling TBD with counsel) |
 | No secrets in the mobile client | ✅ |
@@ -174,10 +176,10 @@ Legend: ✅ built · 🟡 partially built · ⬜ not started · 👤 client-side
 
 | Feature | Status |
 |---|---|
-| Referral & rewards | ⬜ R2 |
-| Loyalty points | ⬜ R2 |
-| Favourite stores / saved lists | 🟡 (product favourites ✅; saved shopping lists R2) |
-| Scheduled deliveries | 🟡 (`scheduled_for` field stored; scheduling engine R2) |
+| Referral & rewards | ✅ | Referral code per customer, public validation, ₦1,000/₦500 split, paid on the invitee's first completed order |
+| Loyalty points | ✅ | Append-only ledger, earn on completion, redeem at checkout (capped), auto-refund on cancellation |
+| Favourite stores / saved lists | ✅ | Product favourites + reusable "Shop for me" lists (`/api/saved-lists`) |
+| Scheduled deliveries | ✅ | Server-validated window (1 hour notice, 7-day horizon), stored on the order, surfaced to merchant/rider |
 | Express delivery | ✅ |
 | Promo campaigns & discount codes | ✅ |
 | Ratings & reviews with moderation | 🟡 (ratings ✅; admin hide-review R2) |
@@ -204,7 +206,7 @@ Legend: ✅ built · 🟡 partially built · ⬜ not started · 👤 client-side
 
 | Requirement | Status |
 |---|---|
-| Integrated end-to-end testing | 🟡 (12 automated integration tests ✅; device matrix, load, security tests in M7) |
+| Integrated end-to-end testing | 🟡 (19 automated integration tests ✅; device matrix, load, security tests in M7) |
 | Repository, API docs, migrations, seed, env docs | ✅ |
 | Build & release instructions | ✅ (`DEPLOYMENT.md`, `README.md`) |
 | Store submission support | ⬜ M7 / `DEPLOYMENT.md` checklist |
@@ -219,7 +221,7 @@ Legend: ✅ built · 🟡 partially built · ⬜ not started · 👤 client-side
 
 1. **Live payment keys** from the client's approved Paystack account, with webhook URL configured in
    the Paystack dashboard (not just in `.env`).
-2. **Postgres + backups + restore drill** — move off SQLite, prove a restore.
+2. **Postgres + backups + restore drill** — DDL, adapter helpers, `docker-compose` and `litestream` are ready (`docs/POSTGRES_MIGRATION.md`); the driver swap and a proven restore are still outstanding.
 3. **Supply** — 15+ vetted merchants and 10+ verified riders in launch zones.
 4. **Legal pack** — privacy policy, T&Cs, refund/cancellation policy, rider/shopper agreements.
 5. **Pharmacy compliance** — unless the category is disabled at launch, prescription upload and

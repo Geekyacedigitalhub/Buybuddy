@@ -23,7 +23,7 @@ vertical slice of the entire platform** — four role experiences on one API and
 | Shopper / rider app | ✅ Functional | Onboarding, offers, accept/decline, shopping list, substitution proposals, receipts, delivery PIN, earnings, payouts |
 | Merchant portal | ✅ Functional | Store setup, catalogue CRUD, inventory, order accept/prepare/reject, settlements |
 | Admin dashboard | ✅ Functional | KPIs, orders, users, merchant & worker approval, refunds, payouts, promos, banners, push, settings, support, audit log |
-| Backend API | ✅ Functional | 121 endpoints, role-based authorisation, order state machine, pricing engine, idempotent payments |
+| Backend API | ✅ Functional | 131 endpoints, role-based authorisation, order state machine, pricing engine, idempotent payments |
 | Payments | ✅ Functional (sandbox) + Paystack adapter | Server-side verification, HMAC webhook validation, duplicate-charge protection. **Real Paystack requires the client's merchant account.** |
 | Automated tests | ✅ 12 integration tests | Full merchant lifecycle, personal-shopping approval, concurrency, RBAC, webhook signature |
 

@@ -12,6 +12,7 @@ import {
 } from '../lib/auth.js';
 import { asyncHandler, bad, normalisePhone, notFound, now, requireFields, sanitizeUser, uid } from '../lib/util.js';
 import { notify, settingsAll, walletBalance, walletEntry, audit } from '../lib/settings.js';
+import { ensureReferralCode, linkReferral } from '../lib/growth.js';
 
 const router = Router();
 
@@ -87,6 +88,16 @@ router.post(
         now()
       );
     }
+
+    // referral attribution (silently ignored if the code is unknown)
+    if (req.body.referral_code) {
+      try {
+        linkReferral(id, req.body.referral_code);
+      } catch {
+        /* unknown code must never block a signup */
+      }
+    }
+    ensureReferralCode(id);
 
     const code = createOtp(normPhone || `email:${email}`, 'signup');
     notify(id, {

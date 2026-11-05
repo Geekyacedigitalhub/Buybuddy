@@ -165,7 +165,80 @@ Payment statuses: `pending · paid · paid_cash · failed · refunded`.
 | `POST` | `/api/dev/payments/:reference/approve` | sandbox only: simulates gateway approval |
 | `POST` | `/api/uploads` | `{data_url, file_name?}` → `{url}` (≤5 MB, images/PDF) |
 | `GET` | `/api/health` | version, uptime timestamp, payment mode |
+| `GET` | `/api/ready` | readiness probe: `{ready:true, db:"ok"}`, or `503` when `SELECT 1` fails |
 | `GET` | `/uploads/:file` | static uploaded files |
+
+## Growth & convenience endpoints (Release 2)
+
+### Loyalty points
+
+Points are an append-only ledger (`loyalty_entries`) — the balance is always the
+sum of entries, never a mutable column. Rules live in platform settings, so an
+admin can retune them without a deploy.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/loyalty` | `{balance, rules, lifetime_earned, lifetime_redeemed, entries[]}` |
+| `POST` | `/api/loyalty/preview` | `{points, subtotal}` → `{points, discount}`; throws on abuse (below minimum, above balance, above the % cap) |
+| `GET` | `/api/me/rewards` | one call for the account screen: wallet balance, points, referral code, referral summary |
+
+Earning: `floor(subtotal / 1000 × loyalty_points_per_1000)` on the **merchandise
+subtotal** (never on delivery or service fees), credited when the order reaches
+`completed` and keyed to the order id, so re-settling cannot double-credit.
+Redemption: capped at `loyalty_max_redeem_percent` of the basket; points are
+returned to the ledger if the customer cancels before the merchant accepts.
+
+```bash
+curl -s -X POST $API/api/cart/quote -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"address_id":"<id>","loyalty_points":200,"scheduled_for":"2026-11-08T10:00:00.000Z"}'
+# → { ..., "loyalty": {"points":200,"discount":200},
+#        "scheduled": "2026-11-08T10:00:00.000Z", "total": ... }
+```
+
+### Referrals
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/referrals` | `{code, invited, qualified, earned, reward_referrer, reward_referee, share_text}` |
+| `POST` | `/api/referrals/validate` | public (no auth) — `{code}` → `{valid:true, referrer:"Tunde", message}` or `{valid:false, message}` |
+
+A code is passed once at signup (`POST /api/auth/register {referral_code}`), and
+the reward fires on the invitee's **first completed order** only —
+`UNIQUE(referee_id)` on `referral_rewards` makes a second payout impossible at the
+database level, not just in code.
+
+### Scheduled deliveries
+
+Pass `scheduled_for` (ISO-8601) to `/api/cart/quote` or `/api/orders/checkout`.
+Validation is server-side: at least `scheduling_min_hours` ahead (default 1 hour),
+at most `scheduling_max_days` ahead (default 7). A quote with a bad window returns
+`scheduled: {error}` so the UI can explain it; checkout with a bad window is a
+`400`. Scheduled orders are normal orders with `scheduled_for` set — the merchant
+and rider queues sort them by promise time.
+
+### Saved lists (repeat "Shop for me" requests)
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/saved-lists` | the caller's lists, newest first |
+| `POST` | `/api/saved-lists` | `{name, items:[{description, qty, target_price}]}` → `201`; empty list → `400` |
+| `DELETE` | `/api/saved-lists/:id` | owner only |
+
+Lists store item text, quantity and expected price — not product ids — because
+"Shop for me" is about intent, and the shopper still confirms real prices.
+
+## Operational behaviour
+
+- **Rate limits** (fixed window, in-process): sign-in `20 failed/15 min` (successful
+  attempts don't count), OTP `8/hour`, checkout `12/min`, payments `20/min`.
+  Exceeding a limit returns `429` with `Retry-After` and
+  `{code:"rate_limited", retry_after}`.
+- **Headers**: `X-Request-Id` on every response (also echoed into error bodies as
+  `request_id`), plus CSP, `X-Content-Type-Options`, `Referrer-Policy`,
+  `X-Frame-Options` (production only unless `CSP_FRAME_ANCESTORS` is set).
+- **Logs**: one JSON line per request — `{ts, level, request_id, method, path,
+  status, ms, user_id, role, ip}`. Disable with `LOG_REQUESTS=false`.
 
 ## Example: the money-critical path
 

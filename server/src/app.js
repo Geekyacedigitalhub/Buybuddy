@@ -8,6 +8,7 @@ import { optionalAuth, requireAuth } from './lib/auth.js';
 import { ApiError, now, uid } from './lib/util.js';
 import { ensureDefaults, audit } from './lib/settings.js';
 import { handlePaystackWebhook, paymentModes } from './lib/payments.js';
+import { securityHeaders, requestLogger, rateLimit, limiterPresets, validateEnv } from './lib/security.js';
 import { verifyPayment } from './lib/payments.js';
 
 import accountRoutes from './routes/accounts.js';
@@ -17,16 +18,32 @@ import orderRoutes from './routes/orders.js';
 import workerRoutes from './routes/worker.js';
 import merchantRoutes from './routes/merchant.js';
 import adminRoutes from './routes/admin.js';
+import growthRoutes from './routes/growth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 export function createApp() {
+  validateEnv();
   migrate();
   ensureDefaults();
 
   const app = express();
   app.set('trust proxy', 1);
+  app.disable('x-powered-by');
+  app.use(securityHeaders);
+  app.use(requestLogger);
   app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true, credentials: true }));
+
+  /* Per-route rate limits. Cheap in memory today; swap the store for Redis
+     when the API runs on more than one instance (see docs/DEPLOYMENT.md). */
+  app.use('/api/auth/login', rateLimit(limiterPresets.auth));
+  app.use('/api/auth/register', rateLimit(limiterPresets.auth));
+  app.use('/api/auth/password', rateLimit(limiterPresets.auth));
+  app.use('/api/auth/otp', rateLimit(limiterPresets.otp));
+  app.use('/api/orders/checkout', rateLimit(limiterPresets.checkout));
+  app.use('/api/shopping/requests', rateLimit(limiterPresets.checkout));
+  app.use('/api/payments', rateLimit(limiterPresets.payment));
+  app.use('/api/dev/payments', rateLimit(limiterPresets.payment));
 
   /* The raw body is required to validate Paystack's HMAC signature. */
   app.post('/api/webhooks/paystack', express.raw({ type: '*/*', limit: '2mb' }), (req, res) => {
@@ -40,6 +57,16 @@ export function createApp() {
 
   app.use(express.json({ limit: '6mb' }));
   app.use(express.urlencoded({ extended: true }));
+
+  /* Readiness probe: distinguishes "process is up" from "can serve traffic". */
+  app.get('/api/ready', (_req, res) => {
+    try {
+      db.prepare('SELECT 1').get();
+      res.json({ ready: true, db: 'ok', time: now() });
+    } catch (err) {
+      res.status(503).json({ ready: false, db: 'error', error: err.message });
+    }
+  });
 
   app.get('/api/health', (_req, res) => {
     res.json({
@@ -59,6 +86,7 @@ export function createApp() {
   app.use('/api', orderRoutes);
   app.use('/api', workerRoutes);
   app.use('/api', merchantRoutes);
+  app.use('/api', growthRoutes);
   app.use('/api', adminRoutes);
 
   /* Sandbox checkout endpoint — mirrors what Paystack's inline UI returns. */
@@ -112,6 +140,7 @@ export function createApp() {
       error: status >= 500 ? 'Something went wrong on our side. Please try again.' : err.message,
       code: err.code || 'error',
       details: err.details,
+      request_id: req.id,
     });
   });
 
@@ -122,8 +151,17 @@ export function startServer(port = process.env.PORT || 4000, host = '0.0.0.0') {
   const app = createApp();
   return new Promise((resolve) => {
     const server = app.listen(port, host, () => {
-      console.log(`BUYBUDDY API listening on http://${host}:${port}`);
+      console.log(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'info',
+        msg: 'BUYBUDDY API listening',
+        url: `http://${host}:${port}`,
+        env: process.env.NODE_ENV || 'development',
+        payments: paymentModes(),
+      }));
       resolve(server);
     });
+    server.keepAliveTimeout = 65_000;
+    server.headersTimeout = 70_000;
   });
 }

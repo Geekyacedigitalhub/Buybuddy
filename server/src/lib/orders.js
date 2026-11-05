@@ -1,5 +1,6 @@
 import { db } from './db.js';
 import { settingsAll, notify, event, walletEntry } from './settings.js';
+import { awardLoyalty, rewardReferralIfEligible } from './growth.js';
 import { bad, forbidden, money, now, uid, clamp, fakePin } from './util.js';
 
 /* ------------------------------------------------------------------------ *
@@ -402,6 +403,14 @@ export function settleOrder(orderId) {
   }
 
   event(orderId, { actorRole: 'system', type: 'settled', message: 'Settlement recorded', meta: entries });
+
+  // growth: loyalty points + referral bonuses are awarded exactly once, here,
+  // because settlement is already guarded against double execution.
+  const loyalty = awardLoyalty(order);
+  const referral = rewardReferralIfEligible(order);
+  if (loyalty.points) entries.push({ party: 'customer_points', points: loyalty.points });
+  if (referral) entries.push({ party: 'referral', ...referral });
+
   return { entries };
 }
 

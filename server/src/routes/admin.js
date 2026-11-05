@@ -3,11 +3,13 @@ import { db } from '../lib/db.js';
 import { requireAuth, requireRole, revokeTokens } from '../lib/auth.js';
 import { asyncHandler, bad, notFound, now, paginate, requireFields, uid, slugify, forbidden } from '../lib/util.js';
 import { notify, event, settingsAll, setSetting, DEFAULT_SETTINGS, walletBalance, walletEntry, audit } from '../lib/settings.js';
-import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers } from '../lib/orders.js';
+import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers, settleOrder } from '../lib/orders.js';
 import { refundPayment } from '../lib/payments.js';
 
 const router = Router();
-router.use(requireAuth, requireRole('admin'));
+// Scope the admin guard to /admin/* so this router cannot swallow (and 403)
+// unrelated routes mounted after it under /api.
+router.use('/admin', requireAuth, requireRole('admin'));
 
 /* ------------------------------- overview -------------------------------- */
 
@@ -162,6 +164,8 @@ router.post(
     const { status, note } = req.body || {};
     if (!status) throw bad('Provide the target status.');
     const order = transition(req.params.id, status, { actor: req.user, actorRole: 'admin', note: note || 'Updated by admin' });
+    // an admin forcing `completed` must settle + award loyalty exactly like the normal path
+    if (status === 'completed') settleOrder(order.id);
     audit(req, 'order.status', 'order', order.id, { status });
     res.json({ order: publicOrder(order) });
   })

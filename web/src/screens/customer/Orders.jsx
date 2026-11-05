@@ -53,6 +53,7 @@ export function Orders() {
               <div className="row" style={{ gap: 6, marginTop: 6 }}>
                 <StatusBadge status={o.status} />
                 {o.payment_status === 'pending' && <Badge tone="badge-warn">Payment pending</Badge>}
+                {o.scheduled_for && <Badge tone="badge-orange"><Icon name="clock" size={11} /> {new Date(o.scheduled_for).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Badge>}
               </div>
             </div>
             <Icon name="right" size={16} style={{ color: 'var(--ink-3)' }} />
@@ -144,6 +145,11 @@ export function OrderDetail() {
         <div className="grow">
           <div className="h2">{order.type === 'personal' ? 'Personal shopping' : order.store?.name || 'Order'}</div>
           <div className="sub mono">{order.code} · {timeAgo(order.created_at)}</div>
+          {order.scheduled_for && (
+            <div className="tiny" style={{ color: 'var(--orange)', fontWeight: 700, marginTop: 2 }}>
+              Scheduled for {new Date(order.scheduled_for).toLocaleString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
         </div>
         <StatusBadge status={order.status} />
       </div>

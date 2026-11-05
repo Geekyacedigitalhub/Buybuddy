@@ -3,7 +3,7 @@
 ## Automated suite (runs today)
 
 ```bash
-npm test          # node --test, 12 integration tests
+npm test          # node --test, 19 integration tests
 ```
 
 The suite boots a **throwaway database**, seeds it, starts the real HTTP server and drives complete
@@ -46,10 +46,22 @@ settlement net of commission → toggle the store closed and confirm customers c
 base fee and confirm new quotes use it → create a promo → send a broadcast → verify every action appears
 in the audit log → suspend a customer and confirm their session is revoked.
 
+## Release-2 coverage added to the automated suite
+
+| Test | What it proves |
+|---|---|
+| `security headers, request id and readiness probe` | CSP/nosniff/referrer headers present, `X-Request-Id` on every response, `/api/ready` runs `SELECT 1` |
+| `rate limiting blocks repeated failed sign-ins with 429` | 21st failed sign-in is rejected with `code: rate_limited` and a positive `retry_after`; the correct password is also blocked while the window is open |
+| `saved lists: create, list, delete` | CRUD works, empty lists are rejected, deletion is real |
+| `scheduled delivery: future windows accepted, invalid rejected` | quote echoes the slot; <1h and >7d windows are flagged; checkout refuses a bad window; the order stores `scheduled_for` |
+| `loyalty: points accrue, redeem, refund` | earn = `floor(subtotal/1000 × rate)` on completion, re-settling does not double-credit, minimum/balance guards reject abuse, the discount lands on the order, and cancelling returns the points |
+| `referrals: code links at signup, pays exactly once` | public code validation, ₦1,000 credited to the referrer on the invitee's first completed order, and **no second payout** on the invitee's next order |
+| `rewards summary endpoint` | `/api/me/rewards` returns points, referral code and rules for the account screen |
+
 ## What still needs building (M7)
 
 * Unit tests for `calcFees` edge cases (zero subtotal, promo larger than cart, express + free delivery).
-* Contract tests per endpoint (schema assertions), including 401/403 matrices for all 121 routes.
+* Contract tests per endpoint (schema assertions), including 401/403 matrices for all 131 routes.
 * Playwright E2E on a device matrix (iPhone SE/13, Pixel 6, small Android) and offline/poor-network runs.
 * Load test with k6: 200 concurrent order creations; verify no oversell and no duplicate orders.
 * Payment matrix: success, failure, pending→success, duplicate webhook, refund, partial refund,

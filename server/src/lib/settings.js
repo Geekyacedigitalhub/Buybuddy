@@ -28,6 +28,18 @@ export const DEFAULT_SETTINGS = {
   max_cart_quantity: 50,
   support_email: 'support@buybuddy.ng',
   support_phone: '+234 700 289 2899',
+  // ---- growth ----
+  loyalty_enabled: true,
+  loyalty_points_per_1000: 5,      // points earned per ₦1,000 spent
+  loyalty_naira_per_point: 1,      // value of one point when redeemed
+  loyalty_min_redeem: 200,
+  loyalty_max_redeem_percent: 20,  // never discount more than 20% of the basket
+  referral_enabled: true,
+  referral_referrer_reward: 1000,
+  referral_referee_reward: 500,
+  scheduling_enabled: true,
+  scheduling_max_days: 7,
+  scheduling_min_hours: 1,     // earliest bookable window
 };
 
 export function settingsAll() {

@@ -224,6 +224,26 @@ CREATE TABLE IF NOT EXISTS support_messages (
   body TEXT NOT NULL, created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS loyalty_entries (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, order_id TEXT,
+  type TEXT NOT NULL CHECK (type IN ('earn','redeem','adjust')),
+  points INTEGER NOT NULL, balance_after INTEGER NOT NULL,
+  description TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_loyalty_user ON loyalty_entries(user_id);
+
+CREATE TABLE IF NOT EXISTS referral_rewards (
+  id TEXT PRIMARY KEY, referrer_id TEXT NOT NULL, referee_id TEXT NOT NULL,
+  order_id TEXT, referrer_amount INTEGER NOT NULL, referee_amount INTEGER NOT NULL,
+  created_at TEXT NOT NULL, UNIQUE(referee_id)
+);
+
+CREATE TABLE IF NOT EXISTS saved_lists (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL,
+  items_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_saved_lists_user ON saved_lists(user_id);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id TEXT PRIMARY KEY, actor_id TEXT, actor_email TEXT, action TEXT NOT NULL, entity TEXT,
   entity_id TEXT, meta TEXT, ip TEXT, created_at TEXT NOT NULL
@@ -231,8 +251,27 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
 `;
 
+/**
+ * Adds a column to an existing table when it is missing. SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, so we inspect the schema first — this keeps
+ * migrations safe to re-run on every boot (and is the pattern the Postgres
+ * migration script mirrors).
+ */
+export function ensureColumn(table, column, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
 export function migrate() {
   db.exec(SCHEMA);
+  // incremental columns added after v1.0
+  ensureColumn('users', 'referral_code', 'TEXT');
+  ensureColumn('users', 'referred_by', 'TEXT');
+  ensureColumn('orders', 'points_earned', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('orders', 'points_redeemed', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL');
 }
 
 export function reset() {

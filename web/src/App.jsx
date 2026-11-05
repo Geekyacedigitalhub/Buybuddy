@@ -8,7 +8,7 @@ import { Home, Browse, StorePage, ProductPage, SearchPage } from './screens/cust
 import { Cart, Checkout, PaymentReturn, SandboxPay } from './screens/customer/Checkout.jsx';
 import { Orders, OrderDetail } from './screens/customer/Orders.jsx';
 import ShopForMe from './screens/customer/ShopForMe.jsx';
-import { Account, Wallet, Favourites, Addresses, Notifications, Support } from './screens/customer/Account.jsx';
+import { Account, Wallet, Rewards, Favourites, Addresses, Notifications, Support } from './screens/customer/Account.jsx';
 import WorkerApp from './screens/Worker.jsx';
 import MerchantApp from './screens/Merchant.jsx';
 import AdminApp from './screens/Admin.jsx';
@@ -166,6 +166,7 @@ export default function App() {
               <Route path="/orders/:id" element={<RequireAuth roles={['customer']}><CustomerShell><OrderDetail /></CustomerShell></RequireAuth>} />
               <Route path="/account" element={<RequireAuth roles={['customer']}><CustomerShell><Account /></CustomerShell></RequireAuth>} />
               <Route path="/account/wallet" element={<RequireAuth roles={['customer']}><CustomerShell><Wallet /></CustomerShell></RequireAuth>} />
+              <Route path="/account/rewards" element={<RequireAuth roles={['customer']}><CustomerShell><Rewards /></CustomerShell></RequireAuth>} />
               <Route path="/account/addresses" element={<RequireAuth roles={['customer']}><CustomerShell><Addresses /></CustomerShell></RequireAuth>} />
               <Route path="/account/notifications" element={<RequireAuth roles={['customer']}><CustomerShell><Notifications /></CustomerShell></RequireAuth>} />
               <Route path="/support" element={<RequireAuth roles={['customer']}><CustomerShell><Support /></CustomerShell></RequireAuth>} />

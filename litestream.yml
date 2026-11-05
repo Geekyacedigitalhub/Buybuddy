@@ -1,0 +1,20 @@
+# Continuous SQLite replication — the launch-scale alternative to Postgres.
+# Runs as a sidecar:  litestream replicate -config litestream.yml
+#
+# This gives point-in-time recovery of the whole database to object storage with
+# a ~1 second RPO, and costs nothing beyond storage. See docs/POSTGRES_MIGRATION.md
+# for when it is time to move to Postgres instead.
+dbs:
+  - path: /data/buybuddy.sqlite
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: buybuddy
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        retention: 720h          # 30 days of point-in-time recovery
+        sync-interval: 1s
+      # Local fallback that works with no cloud account:
+      # - type: file
+      #   path: /backups/buybuddy

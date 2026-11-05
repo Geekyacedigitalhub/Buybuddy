@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { api } from '../lib/api.js';
 import { Button, Field, Icon, Input, Logo, Select, useAuth, useToast } from '../lib/ui.jsx';
 
 const DEMOS = [
@@ -19,12 +20,32 @@ const ROLES = [
 
 export default function AuthScreen() {
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', role: 'customer', business_name: '', city: 'Lagos' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', role: 'customer', business_name: '', city: 'Lagos', referral_code: '' });
+  const [refCheck, setRefCheck] = useState(null); // null | {valid, message}
+  const [params] = useSearchParams();
   const [busy, setBusy] = useState(false);
   const { login, register } = useAuth();
   const toast = useToast();
   const nav = useNavigate();
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // an invite link looks like /signup?ref=ABCD1234
+  useEffect(() => {
+    const ref = (params.get('ref') || '').toUpperCase();
+    if (ref) { setForm((f) => ({ ...f, referral_code: ref })); setMode('register'); }
+  }, []);
+
+  // check the code as they type (public endpoint, no auth)
+  useEffect(() => {
+    const code = form.referral_code.trim();
+    if (!code) { setRefCheck(null); return undefined; }
+    const t = setTimeout(() => {
+      api.post('/api/referrals/validate', { code })
+        .then((r) => setRefCheck({ valid: !!r.valid, message: r.message }))
+        .catch(() => setRefCheck(null));
+    }, 450);
+    return () => clearTimeout(t);
+  }, [form.referral_code]);
 
   const go = (user) => {
     const dest = { admin: '/admin', merchant: '/merchant', shopper: '/worker', rider: '/worker' }[user.role] || '/';
@@ -48,6 +69,7 @@ export default function AuthScreen() {
           role: form.role,
           city: form.city,
           business_name: form.business_name || undefined,
+          referral_code: form.referral_code.trim() || undefined,
         });
         toast.success('Account created — welcome to BUYBUDDY!');
         go(res.user);
@@ -151,6 +173,28 @@ export default function AuthScreen() {
           {mode === 'register' && (
             <Field label="Phone number" hint="Nigerian numbers only — used for verification and delivery calls.">
               <Input value={form.phone} onChange={set('phone')} placeholder="0803 123 4567" inputMode="tel" />
+            </Field>
+          )}
+
+          {mode === 'register' && form.role === 'customer' && (
+            <Field
+              label="Referral code (optional)"
+              hint={
+                refCheck
+                  ? refCheck.message
+                  : 'Got an invite from a friend? Enter their code and you both get a reward.'
+              }
+            >
+              <Input
+                value={form.referral_code}
+                onChange={(e) => setForm((f) => ({ ...f, referral_code: e.target.value.toUpperCase() }))}
+                placeholder="ABCD1234"
+                maxLength={12}
+                style={{
+                  textTransform: 'uppercase', letterSpacing: 2, fontWeight: 700,
+                  borderColor: refCheck ? (refCheck.valid ? 'var(--green-600)' : 'var(--danger)') : undefined,
+                }}
+              />
             </Field>
           )}
 

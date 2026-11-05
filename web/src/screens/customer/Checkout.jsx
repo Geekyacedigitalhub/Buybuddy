@@ -103,10 +103,17 @@ export function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState('paystack');
   const [notes, setNotes] = useState('');
   const [quote, setQuote] = useState(null);
+  const [rewards, setRewards] = useState(null);
+  const [points, setPoints] = useState('');
+  const [scheduled, setScheduled] = useState('');
   const [placing, setPlacing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newAddr, setNewAddr] = useState({ label: 'Home', line1: '', area: '', city: 'Lagos' });
   const [idemKey] = useState(uuid);
+
+  useEffect(() => {
+    api.get('/api/me/rewards').then(setRewards).catch(() => setRewards(null));
+  }, []);
 
   useEffect(() => {
     api.get('/api/addresses').then((r) => {
@@ -119,9 +126,14 @@ export function Checkout() {
 
   useEffect(() => {
     if (!cart.items.length) return;
-    api.post('/api/cart/quote', { address_id: addressId || undefined, service_level: serviceLevel, promo_code: promoCode || undefined })
-      .then(setQuote).catch(() => setQuote(null));
-  }, [cart.items.length, cart.subtotal, addressId, serviceLevel, promoCode]);
+    api.post('/api/cart/quote', {
+      address_id: addressId || undefined,
+      service_level: serviceLevel,
+      promo_code: promoCode || undefined,
+      loyalty_points: points ? Number(points) : undefined,
+      scheduled_for: scheduled || undefined,
+    }).then(setQuote).catch(() => setQuote(null));
+  }, [cart.items.length, cart.subtotal, addressId, serviceLevel, promoCode, points, scheduled]);
 
   const saveAddress = async () => {
     try {
@@ -142,6 +154,8 @@ export function Checkout() {
         payment_method: paymentMethod,
         service_level: serviceLevel,
         promo_code: promoCode || undefined,
+        loyalty_points: points ? Number(points) : undefined,
+        scheduled_for: scheduled || undefined,
         notes,
         idempotency_key: idemKey,
       }, { headers: { 'Idempotency-Key': idemKey } });
@@ -241,6 +255,24 @@ export function Checkout() {
             <Button variant="ghost" onClick={() => setPromoCode((c) => c.trim())}>Apply</Button>
           </div>
         </Field>
+        <Field label="Schedule this delivery (optional)" hint="Leave empty for delivery as soon as possible. At least 1 hour ahead, up to 7 days.">
+          <Input type="datetime-local" value={scheduled} onChange={(e) => setScheduled(e.target.value)} />
+        </Field>
+        {scheduled && quote?.scheduled?.error && (
+          <div className="tiny" style={{ color: 'var(--danger)' }}>{quote.scheduled.error}</div>
+        )}
+        {rewards?.loyalty?.enabled && rewards.points >= rewards.loyalty.min_redeem && (
+          <Field label={`Use loyalty points (${rewards.points} available)`}
+            hint={`${rewards.loyalty.naira_per_point} point = ₦${rewards.loyalty.naira_per_point}. Minimum ${rewards.loyalty.min_redeem} points, up to ${rewards.loyalty.max_redeem_percent}% of the basket.`}>
+            <div className="row" style={{ gap: 8 }}>
+              <Input type="number" value={points} onChange={(e) => setPoints(e.target.value)} placeholder={String(rewards.loyalty.min_redeem)} />
+              <Button variant="ghost" onClick={() => setPoints(String(Math.min(rewards.points, Math.floor((cart.subtotal * rewards.loyalty.max_redeem_percent) / 100))))}>
+                Max
+              </Button>
+            </div>
+          </Field>
+        )}
+        {quote?.loyalty?.error && <div className="tiny" style={{ color: 'var(--danger)' }}>{quote.loyalty.error}</div>}
         <Field label="Notes for the store or rider (optional)">
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Call when you reach the gate." />
         </Field>
@@ -253,6 +285,7 @@ export function Checkout() {
         <Row label="Delivery fee" value={naira(quote?.deliveryFee || 0)} />
         <Row label={`VAT (${config?.vat_percent ?? 7.5}%)`} value={naira(quote?.tax || 0)} />
         {quote?.discount > 0 && <Row label="Promo discount" value={`− ${naira(quote.discount)}`} tone="var(--green-700)" />}
+        {quote?.loyalty?.discount > 0 && <Row label={`Loyalty points (${quote.loyalty.points})`} value={`− ${naira(quote.loyalty.discount)}`} tone="var(--green-700)" />}
         <div className="divider" />
         <div className="row-between">
           <span className="h3">Total</span>

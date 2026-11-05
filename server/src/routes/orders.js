@@ -14,6 +14,7 @@ import {
   eligibleWorkers,
 } from '../lib/orders.js';
 import { initPayment, verifyPayment, refundPayment } from '../lib/payments.js';
+import { pointsEntry, pointsToDiscount, validateSchedule } from '../lib/growth.js';
 import { orderEvents } from '../lib/orders.js';
 
 const router = Router();
@@ -82,6 +83,7 @@ router.post(
     if (subtotal < store.min_order) throw bad(`Minimum order for ${store.name} is ₦${store.min_order.toLocaleString()}.`);
 
     const promo = body.promo_code ? findPromo(body.promo_code) : null;
+    const scheduledFor = validateSchedule(body.scheduled_for);
     const fees = calcFees({
       subtotal,
       type: 'merchant',
@@ -89,6 +91,11 @@ router.post(
       distanceKm: 4.2,
       promo,
     });
+
+    // loyalty redemption — validated against balance, minimum and % cap
+    const loyalty = body.loyalty_points ? pointsToDiscount(req.user.id, body.loyalty_points, fees.subtotal) : { points: 0, discount: 0 };
+    const discountTotal = fees.discount + loyalty.discount;
+    const total = Math.max(0, fees.total - loyalty.discount);
 
     const id = uid('ord');
     const code = orderCode();
@@ -102,14 +109,14 @@ router.post(
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         id, code, req.user.id, 'merchant', store.id, 'pending_payment',
-        fees.subtotal, fees.serviceFee, fees.deliveryFee, fees.tax, fees.discount, fees.total,
+        fees.subtotal, fees.serviceFee, fees.deliveryFee, fees.tax, discountTotal, total,
         body.payment_method, 'pending', promo?.code || null,
         JSON.stringify({
           label: address.label, line1: address.line1, area: address.area, city: address.city,
           recipient: address.recipient, phone: address.phone, notes: address.notes,
           lat: address.lat, lng: address.lng,
         }),
-        body.notes || null, body.scheduled_for || null, body.service_level || 'standard', pin,
+        body.notes || null, scheduledFor, body.service_level || 'standard', pin,
         idempotencyKey, 4.2, now(), now()
       );
       for (const c of cart) {
@@ -121,6 +128,14 @@ router.post(
       db.prepare('DELETE FROM cart_items WHERE user_id = ?').run(req.user.id);
       if (promo) {
         db.prepare('UPDATE promos SET used_count = used_count + 1 WHERE code = ?').run(promo.code);
+      }
+      if (loyalty.points) {
+        pointsEntry(req.user.id, {
+          type: 'redeem', points: -loyalty.points, orderId: id,
+          description: `Redeemed ${loyalty.points} points on order ${code}`,
+        });
+        db.prepare('UPDATE orders SET points_redeemed = ? WHERE id = ?').run(loyalty.points, id);
+        event(id, { actorId: req.user.id, actorRole: 'customer', type: 'loyalty_redeemed', message: `${loyalty.points} points = ₦${loyalty.discount.toLocaleString()} off` });
       }
       event(id, { actorId: req.user.id, actorRole: 'customer', type: 'created', message: `Order placed with ${store.name}` });
       notify(store.merchant_id, {
@@ -173,6 +188,7 @@ router.post(
 
     const settings = settingsAll();
     const promo = body.promo_code ? findPromo(body.promo_code) : null;
+    const scheduledFor = validateSchedule(body.scheduled_for);
     const fees = calcFees({
       subtotal,
       type: 'personal',
@@ -190,8 +206,8 @@ router.post(
       db.prepare(
         `INSERT INTO orders (id,code,customer_id,type,store_id,status,subtotal,service_fee,delivery_fee,tax,discount,total,
           payment_method,payment_status,promo_code,address_json,notes,instructions,budget,service_level,delivery_pin,
-          idempotency_key,distance_km,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          idempotency_key,distance_km,created_at,updated_at,scheduled_for)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).run(
         id, code, req.user.id, 'personal', body.store_id || null, 'pending_payment',
         fees.subtotal, fees.serviceFee, fees.deliveryFee, fees.tax, fees.discount, fees.total,
@@ -201,7 +217,7 @@ router.post(
           recipient: address.recipient, phone: address.phone, notes: address.notes, lat: address.lat, lng: address.lng,
         }),
         body.notes || null, body.instructions || null, budget, body.service_level || 'standard', pin,
-        idempotencyKey, 4.6, now(), now()
+        idempotencyKey, 4.6, now(), now(), scheduledFor
       );
       for (const i of items) {
         db.prepare(
@@ -430,6 +446,12 @@ router.post(
       for (const i of items) if (i.product_id) db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(i.qty, i.product_id);
       db.prepare('UPDATE orders SET cancel_reason = ?, updated_at = ? WHERE id = ?').run(req.body?.reason || 'Cancelled by customer', now(), order.id);
       transition(order.id, 'cancelled', { actor: req.user, actorRole: 'customer', note: req.body?.reason || 'Cancelled by customer' });
+      if (order.points_redeemed) {
+        pointsEntry(req.user.id, {
+          type: 'adjust', points: order.points_redeemed, orderId: order.id,
+          description: `Points returned — ${order.code} cancelled`,
+        });
+      }
       if (['paid', 'paid_cash'].includes(order.payment_status)) {
         refundPayment(order.id, { amount: order.total, reason: 'Order cancelled by customer', actor: req.user });
       }

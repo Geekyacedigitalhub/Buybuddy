@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, naira, toDataUrl } from '../../lib/api.js';
 import {
-  Badge, Button, Field, Icon, Input, Loading, Select, Textarea, useToast,
+  Badge, Button, Field, Icon, Input, Loading, Modal, Select, Textarea, useToast,
 } from '../../lib/ui.jsx';
 
 const BLANK = () => ({ description: '', qty: 1, target_price: '', image: null, note: '' });
@@ -16,6 +16,10 @@ export default function ShopForMe() {
     instructions: '', notes: '', budget: '',
   });
   const [busy, setBusy] = useState(false);
+  const [savedLists, setSavedLists] = useState([]);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [listName, setListName] = useState('');
+  const [scheduled, setScheduled] = useState('');
   const [idemKey] = useState(() => (crypto.randomUUID ? crypto.randomUUID() : `sfm-${Date.now()}`));
   const toast = useToast();
   const nav = useNavigate();
@@ -27,7 +31,35 @@ export default function ShopForMe() {
       if (def) setForm((f) => ({ ...f, address_id: def.id }));
     });
     api.get('/api/stores?limit=50').then((r) => setStores(r.stores)).catch(() => {});
+    loadSaved();
   }, []);
+
+  const loadSaved = () => api.get('/api/saved-lists').then((r) => setSavedLists(r.lists)).catch(() => {});
+
+  const applySaved = (id) => {
+    const list = savedLists.find((l) => l.id === id);
+    if (!list) return;
+    setItems(list.items.map((i) => ({ ...BLANK(), ...i, target_price: i.target_price ?? '', image: null })));
+    setForm((f) => ({ ...f, budget: String(list.items.reduce((s, i) => s + (i.target_price || 0) * i.qty, 0) || '') }));
+    toast.success(`Loaded “${list.name}”`);
+  };
+
+  const saveList = async () => {
+    const clean = items.filter((i) => i.description.trim());
+    if (!clean.length) return toast.error('Add an item first.');
+    try {
+      await api.post('/api/saved-lists', { name: listName || 'My list', items: clean });
+      setSaveOpen(false);
+      setListName('');
+      loadSaved();
+      toast.success('List saved for next time');
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const deleteSaved = async (id) => {
+    await api.del(`/api/saved-lists/${id}`);
+    loadSaved();
+  };
 
   const estimated = items.reduce((s, i) => s + (Number(i.target_price || 0) * Number(i.qty || 1)), 0);
   const budget = Number(form.budget || estimated || 0);
@@ -63,6 +95,7 @@ export default function ShopForMe() {
         budget,
         instructions: form.instructions,
         notes: form.notes,
+        scheduled_for: scheduled || undefined,
         idempotency_key: idemKey,
         items: clean.map((i) => ({
           description: i.description,
@@ -101,6 +134,33 @@ export default function ShopForMe() {
           </div>
         </div>
       </div>
+
+      {(savedLists.length > 0 || items.some((i) => i.description.trim())) && (
+        <div className="card col" style={{ gap: 10 }}>
+          <div className="row-between">
+            <div className="h3">Saved lists</div>
+            <Button size="sm" variant="ghost" onClick={() => setSaveOpen(true)}>
+              <Icon name="plus" size={13} /> Save this list
+            </Button>
+          </div>
+          {savedLists.length === 0
+            ? <div className="sub">Save a list once and reorder your usual basket in one tap.</div>
+            : (
+              <div className="col" style={{ gap: 8 }}>
+                {savedLists.map((l) => (
+                  <div key={l.id} className="row" style={{ gap: 8 }}>
+                    <button className="chip grow" style={{ textAlign: 'left' }} onClick={() => applySaved(l.id)}>
+                      🧾 {l.name} · {l.items.length} item{l.items.length === 1 ? '' : 's'}
+                    </button>
+                    <button className="btn btn-ghost btn-icon" onClick={() => deleteSaved(l.id)} aria-label="Delete list">
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+      )}
 
       <section className="card col" style={{ gap: 12 }}>
         <div className="row-between">
@@ -175,6 +235,9 @@ export default function ShopForMe() {
             </Select>
           </Field>
         </div>
+        <Field label="Schedule for later (optional)" hint="At least 1 hour ahead, up to 7 days.">
+          <Input type="datetime-local" value={scheduled} onChange={(e) => setScheduled(e.target.value)} />
+        </Field>
         <Field label="Instructions for your shopper">
           <Textarea value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })}
             placeholder="e.g. Buy the exact brand; if unavailable, anything under ₦5,000 is fine. Please send photos." />
@@ -204,6 +267,16 @@ export default function ShopForMe() {
           {busy ? 'Sending request…' : 'Submit request & pay'}
         </Button>
       </section>
+
+      <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title="Save this list"
+        footer={<Button block onClick={saveList}>Save list</Button>}>
+        <Field label="List name">
+          <Input value={listName} onChange={(e) => setListName(e.target.value)} placeholder="Weekly groceries" />
+        </Field>
+        <p className="tiny muted" style={{ marginTop: 10 }}>
+          Saved lists keep item names, quantities and expected prices so you can repeat this request in one tap.
+        </p>
+      </Modal>
     </div>
   );
 }

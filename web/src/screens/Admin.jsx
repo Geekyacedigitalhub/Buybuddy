@@ -771,7 +771,7 @@ function Settings() {
   );
 
   return (
-    <Shell nav={NAV} title="Platform settings" subtitle="Fees, service areas and payment options — changes take effect immediately">
+    <Shell nav={NAV} title="Platform settings" subtitle="Fees, loyalty, referrals, scheduling and payment options — changes take effect immediately">
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
         <div className="card col" style={{ gap: 12 }}>
           <div className="h3">Fees & commissions</div>
@@ -795,6 +795,23 @@ function Settings() {
             {flag('auto_offer_jobs', 'Auto-offer jobs to workers')}
             {num('offer_radius_km', 'Job offer radius (km)')}
             {num('cancellation_window_minutes', 'Customer cancellation window (minutes)')}
+          </div>
+          <div className="card col" style={{ gap: 10 }}>
+            <div className="h3">Loyalty & referrals</div>
+            {flag('loyalty_enabled', 'Loyalty points', 'Customers earn points when an order completes')}
+            {num('loyalty_points_per_1000', 'Points per ₦1,000 spent')}
+            {num('loyalty_naira_per_point', 'Naira value of 1 point (₦)')}
+            {num('loyalty_min_redeem', 'Minimum points per redemption')}
+            {num('loyalty_max_redeem_percent', 'Max % of basket payable with points')}
+            {flag('referral_enabled', 'Referral rewards')}
+            {num('referral_referrer_reward', 'Referrer reward (₦)', 'Paid to wallet after the friend’s first completed order')}
+            {num('referral_referee_reward', 'Friend’s first-order reward (₦)')}
+          </div>
+          <div className="card col" style={{ gap: 10 }}>
+            <div className="h3">Scheduling</div>
+            {flag('scheduling_enabled', 'Scheduled deliveries', 'Let customers pick a delivery window')}
+            {num('scheduling_max_days', 'Book up to (days ahead)')}
+            {num('scheduling_min_hours', 'Minimum notice (hours)')}
           </div>
           <div className="card col" style={{ gap: 10 }}>
             <div className="h3">Market & support</div>

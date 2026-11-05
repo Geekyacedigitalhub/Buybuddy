@@ -3,6 +3,7 @@ import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { asyncHandler, bad, notFound, now, uid } from '../lib/util.js';
 import { calcFees, findPromo, distanceFor } from '../lib/orders.js';
+import { pointsToDiscount, validateSchedule } from '../lib/growth.js';
 import { settingsAll } from '../lib/settings.js';
 
 const router = Router();
@@ -124,8 +125,33 @@ router.post(
     const address = address_id ? db.prepare('SELECT * FROM addresses WHERE id = ? AND user_id = ?').get(address_id, req.user.id) : null;
     const distanceKm = address ? distanceFor(JSON.stringify({ ...address, distance_km: 3.8 })) : 4.2;
     const fees = calcFees({ subtotal: cart.subtotal, type, serviceLevel: service_level, distanceKm, promo });
+
+    // optional loyalty preview: how much would N points take off?
+    let loyalty = { points: 0, discount: 0, error: null };
+    if (req.body?.loyalty_points) {
+      try {
+        loyalty = pointsToDiscount(req.user.id, req.body.loyalty_points, fees.subtotal);
+      } catch (err) {
+        loyalty.error = err.message;
+      }
+    }
+    const total = Math.max(0, fees.total - loyalty.discount);
+
+    let scheduled = null;
+    if (req.body?.scheduled_for) {
+      try {
+        scheduled = validateSchedule(req.body.scheduled_for);
+      } catch (err) {
+        scheduled = { error: err.message };
+      }
+    }
+
     res.json({
       ...fees,
+      total,
+      loyalty,
+      scheduled,
+      base_total: fees.total,
       distance_km: distanceKm,
       item_count: cart.count,
       issues: cart.issues,

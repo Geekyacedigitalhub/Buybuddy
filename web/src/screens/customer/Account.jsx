@@ -43,6 +43,7 @@ export function Account() {
   };
 
   const links = [
+    { to: '/account/rewards', label: 'Points & referrals', sub: 'Earn points, invite friends', icon: 'star' },
     { to: '/account/wallet', label: 'Wallet & payments', sub: 'Top up, view transactions', icon: 'wallet' },
     { to: '/account/addresses', label: 'Saved addresses', sub: 'Home, office and more', icon: 'pin' },
     { to: '/favourites', label: 'Favourites', sub: 'Products you saved', icon: 'heart' },
@@ -121,6 +122,115 @@ export function Account() {
   );
 }
 
+/* -------------------------------- rewards -------------------------------- */
+
+export function Rewards() {
+  const [data, setData] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    Promise.all([api.get('/api/loyalty'), api.get('/api/referrals'), api.get('/api/me/rewards')])
+      .then(([loyalty, referral, me]) => setData({ loyalty, referral, me }))
+      .catch(() => setData(false));
+  }, []);
+
+  if (data === null) return <Loading />;
+  if (data === false) return <Empty icon="star" title="Rewards unavailable" body="Try again in a moment." />;
+
+  const { loyalty, referral } = data;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(referral.code);
+      setCopied(true);
+      toast.success('Referral code copied');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Copy failed — long-press the code to copy it.');
+    }
+  };
+
+  return (
+    <div className="page page-tight col" style={{ gap: 14 }}>
+      <SectionHead title="Points & referrals" subtitle="Earn on every order, and get paid when friends shop" />
+
+      <div className="card" style={{ background: 'linear-gradient(135deg,var(--green-800),var(--green-900))', color: '#fff', border: 'none' }}>
+        <div className="tiny" style={{ opacity: 0.7, letterSpacing: '0.08em', fontWeight: 700 }}>BUYBUDDY POINTS</div>
+        <div className="h1 mono" style={{ marginTop: 4 }}>{loyalty.balance.toLocaleString()}</div>
+        <div className="sub" style={{ color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>
+          Worth {naira(loyalty.balance * loyalty.rules.naira_per_point)} at checkout
+        </div>
+        <div className="row" style={{ gap: 18, marginTop: 14 }}>
+          <div>
+            <div className="tiny" style={{ opacity: 0.6, fontWeight: 700 }}>EARNED</div>
+            <div className="mono strong">{loyalty.lifetime_earned.toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="tiny" style={{ opacity: 0.6, fontWeight: 700 }}>REDEEMED</div>
+            <div className="mono strong">{loyalty.lifetime_redeemed.toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="tiny" style={{ opacity: 0.6, fontWeight: 700 }}>RATE</div>
+            <div className="mono strong">{loyalty.rules.points_per_1000} pts / ₦1,000</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card col" style={{ gap: 12 }}>
+        <div className="row-between">
+          <div className="h3">Invite friends</div>
+          <Badge tone="badge-orange">₦{referral.reward_referrer.toLocaleString()} each</Badge>
+        </div>
+        <p className="sub">
+          Share your code. When your friend completes their first order, you get
+          {naira(referral.reward_referrer)} and they get {naira(referral.reward_referee)}.
+        </p>
+        <button onClick={copy} className="tile row" style={{ justifyContent: 'space-between', cursor: 'pointer', border: '1.5px dashed var(--green-600)', background: 'var(--green-50)' }}>
+          <span className="mono" style={{ fontSize: 20, fontWeight: 800, letterSpacing: 2 }}>{referral.code}</span>
+          <span className="badge badge-green">{copied ? 'Copied' : 'Copy'}</span>
+        </button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            const text = referral.share_text;
+            if (navigator.share) navigator.share({ title: 'BUYBUDDY', text }).catch(() => {});
+            else {
+              navigator.clipboard?.writeText(text);
+              toast.success('Invite message copied');
+            }
+          }}
+        >
+          <Icon name="chat" size={15} /> Share invite
+        </Button>
+        <div className="row" style={{ gap: 20 }}>
+          <div><div className="kpi-label">Invited</div><div className="strong mono">{referral.invited}</div></div>
+          <div><div className="kpi-label">Qualified</div><div className="strong mono">{referral.qualified}</div></div>
+          <div><div className="kpi-label">Earned</div><div className="strong mono">{naira(referral.earned)}</div></div>
+        </div>
+      </div>
+
+      <div className="card card-flush">
+        <div style={{ padding: 14 }} className="h3">Points activity</div>
+        {loyalty.entries.length === 0 && <Empty icon="star" title="No points yet" body="You earn points automatically when an order is completed." />}
+        {loyalty.entries.map((e) => (
+          <div key={e.id} className="row" style={{ gap: 10, padding: '12px 14px', borderTop: '1px solid var(--line)' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: e.points > 0 ? 'var(--ok-soft)' : 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: e.points > 0 ? 'var(--ok)' : 'var(--orange)', fontSize: 13, fontWeight: 800 }}>
+              {e.points > 0 ? '+' : '−'}
+            </div>
+            <div className="grow">
+              <div className="strong" style={{ fontSize: 13 }}>{e.description}</div>
+              <div className="tiny muted">{timeAgo(e.created_at)} · balance {e.balance_after}</div>
+            </div>
+            <span className="mono strong" style={{ fontSize: 13, color: e.points > 0 ? 'var(--ok)' : 'var(--danger)' }}>
+              {e.points > 0 ? '+' : ''}{e.points}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------------- wallet -------------------------------- */
 
 export function Wallet() {
@@ -167,7 +277,7 @@ export function Wallet() {
 
       <div className="card card-flush">
         <div style={{ padding: 14 }} className="h3">Transactions</div>
-        {data.entries.length === 0 && <Empty icon="wallet" title="No transactions yet" block={false} />}
+        {data.entries.length === 0 && <Empty icon="wallet" title="No transactions yet" />}
         {data.entries.map((e, i) => (
           <div key={e.id} className="row" style={{ gap: 12, padding: '12px 14px', borderTop: '1px solid var(--line)' }}>
             <div style={{ width: 34, height: 34, borderRadius: 11, background: e.type === 'credit' ? 'var(--ok-soft)' : 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: e.type === 'credit' ? 'var(--ok)' : 'var(--orange)' }}>

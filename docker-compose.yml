@@ -1,0 +1,57 @@
+# BUYBUDDY — local/production-ish stack.
+#
+#   docker compose up --build          # app on http://localhost:4000 (SQLite, seeded on first boot)
+#   docker compose --profile postgres up   # also start Postgres 16 for the migration path
+#
+# The app mounts a volume for the SQLite database and uploaded receipts so data
+# survives container restarts. See docs/DEPLOYMENT.md §6 for backups.
+
+services:
+  app:
+    build: .
+    image: buybuddy:latest
+    container_name: buybuddy-app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - server/.env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATA_DIR: /data
+    volumes:
+      - buybuddy-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+  # Optional target database for the Postgres migration (docs/POSTGRES_MIGRATION.md)
+  postgres:
+    image: postgres:16-alpine
+    container_name: buybuddy-postgres
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: buybuddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buybuddy_dev}
+      POSTGRES_DB: buybuddy
+    ports:
+      - "5432:5432"
+    volumes:
+      - buybuddy-pg:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buybuddy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  buybuddy-data:
+  buybuddy-pg:

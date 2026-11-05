@@ -9,3 +9,8 @@ server/data/uploads/
 coverage/
 .DS_Store
 *.log
+
+# CI workflow is committed from a token that has the `workflow` scope.
+# Until then the file stays on disk but out of git, so ordinary `git add -A`
+# commits cannot fail with "refusing to allow a PAT to create or update workflow".
+.github/workflows/ci.yml

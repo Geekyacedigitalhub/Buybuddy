@@ -69,7 +69,7 @@ buybuddy/
 └── scripts/push-to-github.sh   # create + push the repo under the client's account
 ```
 
-## 3. Data model (31 tables)
+## 3. Data model (33 tables)
 
 ```
 users(id, role, name, email, phone, password_hash, status, token_version, …)

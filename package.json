@@ -2,7 +2,7 @@
   "name": "buybuddy",
   "version": "1.0.0",
   "private": true,
-  "description": "BUYBUDDY — all-in-one shopping, personal shopper and on-demand delivery marketplace (Nigeria).",
+  "description": "BUYBUDDY \u2014 all-in-one shopping, personal shopper and on-demand delivery marketplace (Nigeria).",
   "workspaces": [
     "server",
     "web"
@@ -16,7 +16,8 @@
     "test": "npm run test -w server"
   },
   "engines": {
-    "node": ">=18"
+    "node": "20.x",
+    "npm": ">=10"
   },
   "license": "UNLICENSED",
   "devDependencies": {

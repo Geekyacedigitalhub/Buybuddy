@@ -21,7 +21,8 @@ services:
     plan: free
     region: frankfurt            # closest Render region to Lagos
     branch: main
-    buildCommand: npm install --workspaces --include-workspace-root && npm run build -w web
+    # --include=dev is required: NODE_ENV=production would otherwise skip vite
+    buildCommand: npm install --include=dev --workspaces --include-workspace-root && npm run build -w web
     startCommand: npm start
     healthCheckPath: /api/ready
     autoDeploy: true

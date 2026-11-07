@@ -6,6 +6,19 @@ import { attachGracefulShutdown } from './lib/security.js';
 const port = Number(process.env.PORT || 4000);
 
 /**
+ * Hosted platforms know their own public URL before the app does: Render exposes
+ * it as RENDER_EXTERNAL_URL. Adopt it so a first deploy cannot fail the
+ * production APP_URL check (payment callbacks need a real HTTPS address), and so
+ * nobody has to paste the URL into a dashboard twice.
+ */
+if (!process.env.APP_URL) {
+  const hosted = process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME;
+  if (hosted) {
+    process.env.APP_URL = /^https?:\/\//.test(hosted) ? hosted : `https://${hosted}`;
+  }
+}
+
+/**
  * Hosted demo convenience: on a fresh container (no database yet) with
  * SEED_IF_EMPTY=true, build the demo marketplace before serving. Off by default
  * so production never invents data.

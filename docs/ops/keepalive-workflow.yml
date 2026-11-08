@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Ping BUYBUDDY
         run: |
-          URL="https://buybuddy-cebr.onrender.com/api/health"
+          URL="https://buybuddy-805j.onrender.com/api/health"
           for attempt in 1 2 3; do
             code=$(curl -s -o /dev/null -m 60 -w '%{http_code}' "$URL" || echo 000)
             echo "attempt $attempt -> HTTP $code"

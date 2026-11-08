@@ -30,7 +30,7 @@ Something outside Render taps the server every 10 minutes so it never falls asle
 |---|---|
 | Monitor type | HTTP(s) |
 | Friendly name | BUYBUDDY |
-| URL | `https://buybuddy-cebr.onrender.com/api/health` |
+| URL | `https://buybuddy-805j.onrender.com/api/health` |
 | Monitoring interval | 5 minutes |
 
 That is it. UptimeRobot is free for one monitor at 5-minute intervals, and it also emails you if the

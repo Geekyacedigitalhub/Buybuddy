@@ -29,3 +29,6 @@ mobile/android/capacitor-cordova-android-plugins/
 *.aab
 *.keystore
 *.jks
+
+# local screenshot harness output
+.preview/

@@ -46,17 +46,18 @@ export function Icon({ name, size = 20, stroke = 1.8, fill = 'none', style }) {
   );
 }
 
-export const Logo = ({ size = 34, tagline = false }) => (
-  <Link to="/" className="logo">
-    <span className="logo-mark" style={{ width: size, height: size, borderRadius: size * 0.32 }}>
-      <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M5.5 8h13l-1.2 12H6.7z" />
-        <path d="M9 8V6.2a3 3 0 0 1 6 0V8" />
-        <circle cx="10" cy="12.6" r="0.9" fill="#fff" stroke="none" />
-        <circle cx="14" cy="12.6" r="0.9" fill="#fff" stroke="none" />
-        <path d="M10.2 15.4c.9.9 2.7.9 3.6 0" />
-      </svg>
-    </span>
+export const Logo = ({ size = 36, tagline = false, to = '/' }) => (
+  <Link to={to} className="logo">
+    {/* The one and only brand mark: the same raster the launcher icon is built
+        from, so what a customer sees on the home screen is what they see in app. */}
+    <img
+      className="logo-mark"
+      src="/logo/logo-mark-192.png"
+      width={size}
+      height={size}
+      alt=""
+      style={{ width: size, height: size, borderRadius: size * 0.27 }}
+    />
     <span>BUYBUDDY{tagline && <small>Your personal shopping partner</small>}</span>
   </Link>
 );

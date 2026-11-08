@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="BUYBUDDY">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1F8A6C"/>
+      <stop offset="0.52" stop-color="#176B55"/>
+      <stop offset="1" stop-color="#0A342A"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EAF3EF"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB066"/>
+      <stop offset="1" stop-color="#E4792F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- tile -->
+  <rect width="512" height="512" rx="120" fill="url(#tile)"/>
+  <!-- top-left light -->
+  <path d="M0 120C0 53.7 53.7 0 120 0h272c66.3 0 120 53.7 120 120v40C512 88 448 30 356 30H156C64 30 0 88 0 160z" fill="url(#glass)"/>
+
+  <!-- bag body -->
+  <rect x="146" y="196" width="220" height="176" rx="34" fill="url(#bag)"/>
+  <!-- bag opening shadow -->
+  <path d="M146 230c0-18.8 15.2-34 34-34h152c18.8 0 34 15.2 34 34v10H146z" fill="#0A342A" opacity="0.08"/>
+  <!-- handle -->
+  <path d="M198 208v-24c0-32 26-58 58-58s58 26 58 58v24"
+        fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round"/>
+
+  <!-- accent: the "buddy" spark -->
+  <circle cx="368" cy="182" r="34" fill="url(#spark)"/>
+  <circle cx="368" cy="182" r="34" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="3"/>
+  <path d="M368 166v32M352 182h32" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" opacity="0.95"/>
+</svg>

@@ -1,21 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, isNativeApp } from '../lib/api.js';
+import { api } from '../lib/api.js';
 import { Button, Field, Icon, Input, Logo, Select, useAuth, useToast } from '../lib/ui.jsx';
 
-const DEMOS = [
-  { role: 'Customer', email: 'customer@buybuddy.ng', icon: '🛍️' },
-  { role: 'Shopper', email: 'shopper@buybuddy.ng', icon: '🛒' },
-  { role: 'Rider', email: 'rider@buybuddy.ng', icon: '🛵' },
-  { role: 'Merchant', email: 'merchant1@buybuddy.ng', icon: '🏪' },
-  { role: 'Admin', email: 'admin@buybuddy.ng', icon: '🛡️' },
-];
-
 const ROLES = [
-  { id: 'customer', label: 'I want to shop', icon: '🛍️' },
-  { id: 'shopper', label: 'I want to shop for others', icon: '🛒' },
-  { id: 'rider', label: 'I want to deliver', icon: '🛵' },
-  { id: 'merchant', label: 'I own a store', icon: '🏪' },
+  { id: 'customer', label: 'I want to shop', icon: 'bag' },
+  { id: 'shopper', label: 'I want to shop for others', icon: 'shop' },
+  { id: 'rider', label: 'I want to deliver', icon: 'bike' },
+  { id: 'merchant', label: 'I own a store', icon: 'box' },
 ];
 
 export default function AuthScreen() {
@@ -81,19 +73,6 @@ export default function AuthScreen() {
     }
   };
 
-  const quick = async (email) => {
-    setBusy(true);
-    try {
-      const user = await login(email, 'Password123!');
-      toast.success(`Signed in as ${user.name}`);
-      go(user);
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="auth-wrap">
       <aside className="auth-art">
@@ -109,8 +88,15 @@ export default function AuthScreen() {
             a BUYBUDDY shopper will find it, price it and bring it to your door.
           </p>
           <div className="row wrap" style={{ gap: 10, marginTop: 24 }}>
-            {['🛒 Groceries in minutes', '📸 Shop for me by photo', '🛵 Live rider tracking', '💳 Secure payments'].map((t) => (
-              <span key={t} className="badge" style={{ background: 'rgba(255,255,255,0.14)', color: '#fff' }}>{t}</span>
+            {[
+              ['bag', 'Groceries in minutes'],
+              ['camera', 'Shop for me by photo'],
+              ['bike', 'Live rider tracking'],
+              ['lock', 'Secure payments'],
+            ].map(([icon, label]) => (
+              <span key={label} className="badge feature-chip">
+                <Icon name={icon} size={13} />{label}
+              </span>
             ))}
           </div>
         </div>
@@ -121,6 +107,10 @@ export default function AuthScreen() {
 
       <section className="auth-form">
         <div className="hide-sm" style={{ marginBottom: 22 }}><Logo tagline /></div>
+        <div className="show-sm auth-brand">
+          <Logo size={52} />
+          <div className="auth-brand-line">Your personal shopping partner</div>
+        </div>
         <div className="h1">{mode === 'login' ? 'Welcome back' : 'Create your account'}</div>
         <p className="sub" style={{ marginTop: 4, marginBottom: 20 }}>
           {mode === 'login' ? 'Sign in to shop, sell, or earn with BUYBUDDY.' : 'It takes less than a minute.'}
@@ -144,7 +134,7 @@ export default function AuthScreen() {
                       fontSize: 12.5, whiteSpace: 'normal', textAlign: 'left',
                     }}
                   >
-                    <span style={{ fontSize: 17 }}>{r.icon}</span>
+                    <span className="role-glyph"><Icon name={r.icon} size={17} /></span>
                     {r.label}
                   </button>
                 ))}
@@ -213,22 +203,6 @@ export default function AuthScreen() {
             {mode === 'login' ? 'Create account' : 'Sign in'}
           </button>
         </div>
-
-        {/* Demo shortcuts are for the web preview only — an installed customer app
-            must never advertise test logins. */}
-        {!isNativeApp() && (
-          <>
-            <div className="divider" />
-            <div className="tiny muted" style={{ marginBottom: 8, fontWeight: 700, letterSpacing: '0.08em' }}>DEMO ACCOUNTS — PASSWORD: Password123!</div>
-            <div className="row wrap" style={{ gap: 8 }}>
-              {DEMOS.map((d) => (
-                <button key={d.email} className="chip" disabled={busy} onClick={() => quick(d.email)}>
-                  <span style={{ marginRight: 6 }}>{d.icon}</span>{d.role}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
 
         <p className="tiny muted" style={{ marginTop: 16, lineHeight: 1.6 }}>
           <Icon name="lock" size={12} style={{ verticalAlign: -1 }} /> Payments are processed securely.

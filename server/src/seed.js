@@ -27,11 +27,28 @@ const PHOTO = [
   [/peak milk|milk powder/i, 'milk'],
   [/indomie|noodles/i, 'noodles'],
   [/tomato/i, 'tomatoes'],
-  [/onion/i, 'tomatoes'],
   [/chicken/i, 'chicken'],
   [/spinach|ugu|leafy/i, 'vegetables'],
   [/bread/i, 'bread'],
   [/semovita|semolina|rice/i, 'rice'],
+  // electronics
+  [/earbud|free ?pods|headphone|speaker/i, 'audio'],
+  [/powercore|power bank|charger|usb|bulb|mouse|thermometer|phone|galaxy/i, 'electronics'],
+  // fashion
+  [/sneaker|shoe/i, 'sneakers'],
+  [/dress|head tie|handbag|sunglass|onesie|kaftan|senator/i, 'fashion'],
+  // beauty
+  [/perfume|lipstick|hair oil|cleanser|body cream|shea/i, 'beauty'],
+  // pharmacy
+  [/paracetamol|vitamin|first aid|sanitiser|blood pressure|thermometer/i, 'pharmacy'],
+  // drinks
+  [/coca|cola|water|malt|juice|wine|chapman/i, 'drinks'],
+  // baby
+  [/pampers|formula|wipes|baby bath|onesie/i, 'baby'],
+  // home
+  [/frying pan|bed sheet|detergent|cutlery|kettle|fan|led bulb|hand sanit/i, 'home'],
+  // pantry top-ups
+  [/sugar|honey|yoghurt|avocado|corn|onion|vegetable oil|cooking oil/i, 'pantry'],
 ];
 
 const photoFor = (name) => {
@@ -78,7 +95,91 @@ const tile = (emoji, category = 'Groceries & Supermarket') => {
   );
 };
 
-const img = (emoji, category) => tile(emoji, category);
+const img = (emoji, category) => tile(emoji, category); // product photo fallback, see photoFor()
+
+/* ---------------------------------------------------------------------------
+ * Store identity art.
+ * Real shops upload a logo; ours are monogram marks drawn as vectors — initials
+ * on a tuned gradient, the way a printed signage system would look. Never emoji.
+ * ------------------------------------------------------------------------- */
+const LOGO_TONES = [
+  ['#1F8A6C', '#0C4436'],
+  ['#2F6FB0', '#123E63'],
+  ['#B4552A', '#7A3016'],
+  ['#6A4B9E', '#37255C'],
+  ['#0E7C86', '#084A50'],
+  ['#A63A55', '#5F1F31'],
+  ['#6E7B2F', '#3D441A'],
+  ['#3A5A73', '#1B2E3C'],
+  ['#B0762A', '#6B4415'],
+  ['#245C8A', '#12334F'],
+];
+
+const initialsOf = (name) => {
+  const words = name.replace(/[^\p{L}\s&]/gu, ' ').split(/\s+/).filter(Boolean);
+  const keep = words.filter((w) => !/^(of|and|the|ng)$/i.test(w));
+  const use = keep.length ? keep : words;
+  return use.slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+};
+
+const hashOf = (str) => {
+  let h = 0;
+  for (let i = 0; i < str.length; i += 1) h = (h * 31 + str.charCodeAt(i)) % 9973;
+  return h;
+};
+
+const storeLogo = (name) => {
+  const [c1, c2] = LOGO_TONES[hashOf(name) % LOGO_TONES.length];
+  const mark = initialsOf(name);
+  return (
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
+        <defs>
+          <linearGradient id="l" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/>
+          </linearGradient>
+        </defs>
+        <rect width="320" height="320" rx="76" fill="url(#l)"/>
+        <circle cx="248" cy="66" r="86" fill="#ffffff" opacity="0.10"/>
+        <text x="160" y="188" text-anchor="middle" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif"
+              font-size="${mark.length > 1 ? 118 : 138}" font-weight="800" letter-spacing="-4"
+              fill="#ffffff" fill-opacity="0.96">${mark}</text>
+      </svg>`
+    )
+  );
+};
+
+/* A storefront cover is a real photograph of what that shop sells. */
+const STORE_COVERS = {
+  'GreenMart Supermarket': 'vegetables',
+  'Mama Cass Kitchen': 'jollof',
+  'Fresh Basket Groceries': 'tomatoes',
+  'TechHub Electronics': 'electronics',
+  'Ada Fashion House': 'fashion',
+  'HealthPlus Pharmacy': 'pharmacy',
+  'Glow Beauty Studio': 'beauty',
+  'Home Essentials NG': 'home',
+  'BabyCare Corner': 'baby',
+  'ChillPoint Drinks': 'drinks',
+};
+const storeCover = (name) => `/img/products/${STORE_COVERS[name] || 'vegetables'}.jpg`;
+
+/* Line items a shopper types by hand have no photo — this is the neutral bag art. */
+const itemArt = (() => {
+  const svg = (scale) =>
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
+        <rect width="320" height="320" fill="#EFF7F3"/>
+        <path d="M112 132v-4c0-20 16-36 36-36h24c20 0 36 16 36 36v4" fill="none"
+              stroke="#176B55" stroke-width="13" stroke-linecap="round" stroke-opacity="0.55"/>
+        <rect x="104" y="128" width="112" height="88" rx="20" fill="#176B55" fill-opacity="${0.5 + scale * 0.3}"/>
+      </svg>`
+    );
+  return svg(0.5);
+})();
+
 
 /* Home hero art: a photo when we have one, otherwise a rich brand gradient. */
 const BANNER_PHOTOS = ['/img/products/jollof.jpg', '/img/products/tomatoes.jpg', '/img/products/eggs.jpg'];
@@ -313,7 +414,7 @@ export async function main({ reset: resetDb = true } = {}) {
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).run(
       sid, mid, s.name, `${slugify(s.name)}-${storeIdx}`, `${s.name} — ${s.cat} delivered across Lagos in minutes.`,
-      img(s.emoji, s.cat), img(s.emoji, s.cat), s.area, 'Lagos', '+2348030000000', 'active', 1,
+      storeLogo(s.name), storeCover(s.name), s.area, 'Lagos', '+2348030000000', 'active', 1,
       s.rating, 40 + storeIdx * 7, 0.12, '08:00', '22:00', 15 + storeIdx, 1000 + storeIdx * 500, daysAgo(60 - storeIdx)
     );
     storeIdx += 1;
@@ -329,7 +430,7 @@ export async function main({ reset: resetDb = true } = {}) {
   db.prepare(
     `INSERT INTO stores (id,merchant_id,name,slug,description,logo,area,city,status,is_open,commission_rate,created_at)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).run(uid('str'), pendingMerchant, 'Bola\'s Bakery', 'bolas-bakery-pending', 'Fresh bread and pastries, Surulere.', img('🥐'), 'Surulere', 'Lagos', 'pending', 0, 0.12, daysAgo(2));
+  ).run(uid('str'), pendingMerchant, 'Bola\'s Bakery', 'bolas-bakery-pending', 'Fresh bread and pastries, Surulere.', storeLogo("Bola's Bakery"), 'Surulere', 'Lagos', 'pending', 0, 0.12, daysAgo(2));
 
   /* workers */
   const mkWorker = (name, email, phone, roles, areas, verified = 1, extra = {}) => {
@@ -460,7 +561,7 @@ export async function main({ reset: resetDb = true } = {}) {
       for (const [name, qty] of items) {
         const p = productByName[name];
         db.prepare('INSERT INTO order_items (id,order_id,product_id,name,price,qty,image,status) VALUES (?,?,?,?,?,?,?,?)').run(
-          uid('oit'), id, p?.id || null, name, p?.price || 0, qty, img('🛍️'), 'active'
+          uid('oit'), id, p?.id || null, name, p?.price || 0, qty, itemArt, 'active'
         );
       }
     }
@@ -470,7 +571,7 @@ export async function main({ reset: resetDb = true } = {}) {
           `INSERT INTO shopping_items (id,order_id,description,qty,target_price,proposed_name,proposed_price,proposed_qty,image,status,note,updated_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
         ).run(uid('sit'), id, it.description, it.qty || 1, it.target_price || null, it.proposed_name || null,
-          it.proposed_price || null, it.proposed_qty || null, img(it.emoji || '🛍️'), it.status || 'requested',
+          it.proposed_price || null, it.proposed_qty || null, itemArt, it.status || 'requested',
           it.note || null, createdAt);
       }
     }

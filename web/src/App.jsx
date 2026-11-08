@@ -25,6 +25,12 @@ function RequireAuth({ roles, children }) {
   return children;
 }
 
+function GuestOk({ children }) {
+  const { loading } = useAuth();
+  if (loading) return <Loading label="Starting BUYBUDDY…" />;
+  return children;
+}
+
 export const homeFor = (role) =>
   ({ admin: '/admin', merchant: '/merchant', shopper: '/worker', rider: '/worker' }[role] || '/');
 
@@ -53,7 +59,9 @@ function CustomerShell({ children }) {
           <div className="spacer" />
           <div className="hide-sm row" style={{ gap: 6 }}>
             <div className="badge badge-green"><Icon name="pin" size={13} /> Lekki Phase 1</div>
-            {user && <span className="sub hide-sm">Hi, {user.name.split(' ')[0]}</span>}
+            {user
+              ? <span className="sub hide-sm">Hi, {user.name.split(' ')[0]}</span>
+              : <button className="btn btn-ghost btn-sm" onClick={() => nav('/login')}>Sign in</button>}
           </div>
           <button className="btn btn-ghost btn-icon" onClick={() => nav('/favourites')} aria-label="Favourites">
             <Icon name="heart" size={18} />
@@ -158,13 +166,13 @@ export default function App() {
               <Route path="/payment/return" element={<RequireAuth><PaymentReturn /></RequireAuth>} />
 
               {/* customer */}
-              <Route path="/" element={<RequireAuth roles={['customer']}><CustomerShell><Home /></CustomerShell></RequireAuth>} />
-              <Route path="/search" element={<RequireAuth roles={['customer']}><CustomerShell><SearchPage /></CustomerShell></RequireAuth>} />
-              <Route path="/category/:id" element={<RequireAuth roles={['customer']}><CustomerShell><Browse /></CustomerShell></RequireAuth>} />
-              <Route path="/browse" element={<RequireAuth roles={['customer']}><CustomerShell><Browse /></CustomerShell></RequireAuth>} />
-              <Route path="/store/:id" element={<RequireAuth roles={['customer']}><CustomerShell><StorePage /></CustomerShell></RequireAuth>} />
-              <Route path="/product/:id" element={<RequireAuth roles={['customer']}><CustomerShell><ProductPage /></CustomerShell></RequireAuth>} />
-              <Route path="/cart" element={<RequireAuth roles={['customer']}><CustomerShell><Cart /></CustomerShell></RequireAuth>} />
+              <Route path="/" element={<GuestOk><CustomerShell><Home /></CustomerShell></GuestOk>} />
+              <Route path="/search" element={<GuestOk><CustomerShell><SearchPage /></CustomerShell></GuestOk>} />
+              <Route path="/category/:id" element={<GuestOk><CustomerShell><Browse /></CustomerShell></GuestOk>} />
+              <Route path="/browse" element={<GuestOk><CustomerShell><Browse /></CustomerShell></GuestOk>} />
+              <Route path="/store/:id" element={<GuestOk><CustomerShell><StorePage /></CustomerShell></GuestOk>} />
+              <Route path="/product/:id" element={<GuestOk><CustomerShell><ProductPage /></CustomerShell></GuestOk>} />
+              <Route path="/cart" element={<GuestOk><CustomerShell><Cart /></CustomerShell></GuestOk>} />
               <Route path="/checkout" element={<RequireAuth roles={['customer']}><CustomerShell><Checkout /></CustomerShell></RequireAuth>} />
               <Route path="/shop-for-me" element={<RequireAuth roles={['customer']}><CustomerShell><ShopForMe /></CustomerShell></RequireAuth>} />
               <Route path="/orders" element={<RequireAuth roles={['customer']}><CustomerShell><Orders /></CustomerShell></RequireAuth>} />
@@ -175,7 +183,7 @@ export default function App() {
               <Route path="/account/addresses" element={<RequireAuth roles={['customer']}><CustomerShell><Addresses /></CustomerShell></RequireAuth>} />
               <Route path="/account/notifications" element={<RequireAuth roles={['customer']}><CustomerShell><Notifications /></CustomerShell></RequireAuth>} />
               <Route path="/support" element={<RequireAuth roles={['customer']}><CustomerShell><Support /></CustomerShell></RequireAuth>} />
-              <Route path="/favourites" element={<RequireAuth roles={['customer']}><CustomerShell><Favourites /></CustomerShell></RequireAuth>} />
+              <Route path="/favourites" element={<GuestOk><CustomerShell><Favourites /></CustomerShell></GuestOk>} />
 
               {/* shopper / rider */}
               <Route path="/worker/*" element={<RequireAuth roles={['shopper', 'rider']}><WorkerShell><WorkerApp /></WorkerShell></RequireAuth>} />

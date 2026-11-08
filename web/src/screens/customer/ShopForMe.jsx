@@ -124,7 +124,9 @@ export default function ShopForMe() {
     <div className="page page-tight col" style={{ gap: 14 }}>
       <div className="hero hero-orange" style={{ padding: 20 }}>
         <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
-          <div style={{ fontSize: 30 }}>🛍️</div>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', flex: 'none' }}>
+            <Icon name="bag" size={26} />
+          </div>
           <div>
             <div className="h2">Shop for me</div>
             <div style={{ opacity: 0.9, fontSize: 13.5, marginTop: 4, lineHeight: 1.5 }}>

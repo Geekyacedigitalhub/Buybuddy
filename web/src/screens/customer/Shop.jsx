@@ -9,6 +9,24 @@ import {
 
 /* --------------------------------- home ---------------------------------- */
 
+/* Category art: a photograph of what the aisle actually holds. */
+const CATEGORY_PHOTOS = [
+  [/grocer|supermarket/i, 'rice'],
+  [/food|restaurant/i, 'jollof'],
+  [/fashion|clothing/i, 'fashion'],
+  [/electronic|gadget/i, 'electronics'],
+  [/pharmacy|health/i, 'pharmacy'],
+  [/beauty|personal/i, 'beauty'],
+  [/home|household/i, 'home'],
+  [/drink|beverage/i, 'drinks'],
+  [/baby/i, 'baby'],
+  [/shop for me/i, 'pantry'],
+];
+export const categoryPhoto = (name) => {
+  const hit = CATEGORY_PHOTOS.find(([re]) => re.test(name || ''));
+  return `/img/products/${hit ? hit[1] : 'pantry'}.jpg`;
+};
+
 export function Home() {
   const [data, setData] = useState(null);
   const [q, setQ] = useState('');
@@ -100,9 +118,9 @@ export function Home() {
         <SectionHead title="Shop by category" action={<button className="btn btn-ghost btn-sm" onClick={() => nav('/browse')}>See all</button>} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 10 }}>
           {data.categories.slice(0, 10).map((c) => (
-            <Link key={c.id} to={`/category/${c.id}`} className="tile center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '14px 6px' }}>
-              <span style={{ fontSize: 26 }}>{c.icon}</span>
-              <span style={{ fontSize: 11.5, fontWeight: 650, lineHeight: 1.25 }}>{c.name.replace(' & ', ' & ')}</span>
+            <Link key={c.id} to={`/category/${c.id}`} className="cat-tile">
+              <img src={categoryPhoto(c.name)} alt="" loading="lazy" />
+              <span className="cat-tile-label">{c.name}</span>
             </Link>
           ))}
         </div>
@@ -291,7 +309,7 @@ export function SearchPage() {
           </div>
           <div className="card" style={{ marginTop: 8 }}>
             <div className="row" style={{ gap: 12 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 13, background: 'var(--orange-soft)', display: 'grid', placeItems: 'center', fontSize: 20 }}>📸</div>
+              <div style={{ width: 44, height: 44, borderRadius: 13, background: 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: 'var(--orange)' }}><Icon name="camera" size={21} /></div>
               <div className="grow">
                 <div className="strong">Can't find it?</div>
                 <div className="sub">Send a photo and a shopper will find it for you.</div>
@@ -458,21 +476,41 @@ export function ProductPage() {
   const [qty, setQty] = useState(1);
   const [fav, setFav] = useState(false);
   const { reload } = useCart();
+  const { user } = useAuth();
   const toast = useToast();
   const nav = useNavigate();
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    api.get(`/api/products/${id}`).then(setData).catch(() => setData(null));
+    let alive = true;
+    setFailed(false);
+    api.get(`/api/products/${id}`)
+      .then((d) => { if (alive) setData(d); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
   }, [id]);
 
   useEffect(() => {
+    if (!user) return;
     api.get('/api/favourites').then((r) => setFav(r.favourites.some((f) => f.id === id))).catch(() => {});
-  }, [id]);
+  }, [id, user]);
 
+  if (failed) {
+    return (
+      <div className="page page-tight">
+        <Empty
+          title="This item is no longer listed"
+          body="The store may have taken it down. Browse the aisle again, or ask a personal shopper to find it for you."
+          action={<Button onClick={() => nav('/browse')}>Browse the shop</Button>}
+        />
+      </div>
+    );
+  }
   if (!data) return <Loading />;
   const { product, store, related, reviews } = data;
 
   const add = async () => {
+    if (!user) { nav('/login'); return; }
     try {
       await api.post('/api/cart', { product_id: product.id, qty });
       await reload();
@@ -490,6 +528,7 @@ export function ProductPage() {
   };
 
   const toggleFav = async () => {
+    if (!user) { nav('/login'); return; }
     const r = await api.post(`/api/favourites/${product.id}`);
     setFav(r.favourite);
     toast.success(r.favourite ? 'Saved to favourites' : 'Removed from favourites');

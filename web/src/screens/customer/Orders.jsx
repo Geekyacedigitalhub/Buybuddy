@@ -40,7 +40,11 @@ export function Orders() {
         {list.map((o) => (
           <button key={o.id} className="card row" style={{ gap: 12, textAlign: 'left', cursor: 'pointer' }} onClick={() => nav(`/orders/${o.id}`)}>
             <div style={{ width: 46, height: 46, borderRadius: 13, background: 'var(--green-50)', display: 'grid', placeItems: 'center', fontSize: 20, flex: 'none' }}>
-              {o.type === 'personal' ? '🛍️' : (o.store?.logo ? <img src={o.store.logo} alt="" style={{ width: 46, height: 46, borderRadius: 13, objectFit: 'cover' }} /> : '🏪')}
+              {o.type === 'personal'
+                ? <Icon name="bag" size={21} style={{ color: 'var(--green-700)' }} />
+                : (o.store?.logo
+                  ? <img src={o.store.logo} alt="" style={{ width: 46, height: 46, borderRadius: 13, objectFit: 'cover' }} />
+                  : <Icon name="shop" size={21} style={{ color: 'var(--green-700)' }} />)}
             </div>
             <div className="grow">
               <div className="row-between">

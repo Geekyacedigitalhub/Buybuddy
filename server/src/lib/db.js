@@ -165,6 +165,15 @@ CREATE TABLE IF NOT EXISTS order_events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_order ON order_events(order_id);
 
+/* Every GPS fix a rider's phone reports during a delivery. The customer's map
+ * reads the newest one and draws the rest as the travelled path. */
+CREATE TABLE IF NOT EXISTS rider_pings (
+  id TEXT PRIMARY KEY, order_id TEXT NOT NULL, rider_id TEXT NOT NULL,
+  lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL, speed REAL, heading REAL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pings_order ON rider_pings(order_id, created_at);
+
 CREATE TABLE IF NOT EXISTS receipts (
   id TEXT PRIMARY KEY, order_id TEXT NOT NULL, uploaded_by TEXT NOT NULL, file_name TEXT,
   mime TEXT, data_url TEXT, amount INTEGER, note TEXT, created_at TEXT NOT NULL
@@ -282,6 +291,11 @@ export function migrate() {
   // storefront coordinates, so the delivery map can draw the pickup point
   ensureColumn('stores', 'lat', 'REAL');
   ensureColumn('stores', 'lng', 'REAL');
+  // the rider's most recent GPS fix, denormalised onto the order for a single lookup
+  ensureColumn('orders', 'rider_lat', 'REAL');
+  ensureColumn('orders', 'rider_lng', 'REAL');
+  ensureColumn('orders', 'rider_accuracy', 'REAL');
+  ensureColumn('orders', 'rider_updated_at', 'TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL');
 }
 

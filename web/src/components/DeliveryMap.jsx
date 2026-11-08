@@ -31,10 +31,11 @@ const pin = (colour, glyph) =>
     popupAnchor: [0, -26],
   });
 
-export default function DeliveryMap({ pickup, destination, rider, height = 230, fallback = null }) {
+export default function DeliveryMap({ pickup, destination, rider, trail = null, height = 230, fallback = null }) {
   const holder = useRef(null);
   const mapRef = useRef(null);
   const riderRef = useRef(null);
+  const trailRef = useRef(null);
   const [tilesUp, setTilesUp] = useState(false);
 
   useEffect(() => {
@@ -62,6 +63,15 @@ export default function DeliveryMap({ pickup, destination, rider, height = 230, 
     L.marker([destination.lat, destination.lng], { icon: pin('#E4792F', 'Y') })
       .addTo(map)
       .bindPopup(`<b>${destination.label || 'Delivery address'}</b><br/>Delivering here`);
+
+    // The path the phone actually recorded. Without it the map would show only
+    // where the rider is now, with no sense of where they have been.
+    if (Array.isArray(trail) && trail.length > 1) {
+      trailRef.current = L.polyline(
+        trail.map((t) => [t.lat, t.lng]),
+        { color: '#0C4436', weight: 3, opacity: 0.55, lineCap: 'round' }
+      ).addTo(map);
+    }
 
     const points = [[pickup.lat, pickup.lng], [destination.lat, destination.lng]];
     if (rider) points.splice(1, 0, [rider.lat, rider.lng]);
@@ -91,6 +101,13 @@ export default function DeliveryMap({ pickup, destination, rider, height = 230, 
   useEffect(() => {
     if (riderRef.current && rider) riderRef.current.setLatLng([rider.lat, rider.lng]);
   }, [rider?.lat, rider?.lng]);
+
+  // extend the travelled path as the rider moves
+  const trailKey = Array.isArray(trail) ? trail.length : 0;
+  useEffect(() => {
+    if (!trailRef.current || !Array.isArray(trail)) return;
+    trailRef.current.setLatLngs(trail.map((t) => [t.lat, t.lng]));
+  }, [trailKey]);
 
   return (
     <div style={{ position: 'relative', height, borderRadius: 16, overflow: 'hidden', background: '#eef3ef' }}>

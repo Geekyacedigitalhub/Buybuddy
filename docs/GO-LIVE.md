@@ -106,6 +106,11 @@ There is nothing to set up here. Tracking uses **OpenStreetMap tiles with Leafle
 free and need no account, no API key and no card on file. The map on the order screen draws the shop,
 the rider and the customer's address on real Lagos streets, with the route between them.
 
+The position on that map is no longer a guess: while a delivery is running, the rider's phone reports
+where it actually is (they switch it on with one tap on the job screen, and it switches itself off when
+the delivery ends). Customers see the bike move, the path already covered, a distance and an ETA, and a
+**Live GPS** badge — or an honest **Estimated position** badge if the phone has gone quiet.
+
 If you later want satellite imagery, traffic, or turn-by-turn directions for riders, *that* is when a
 Google Maps key is worth paying for. Nothing breaks without one.
 

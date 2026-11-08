@@ -83,6 +83,7 @@ Payment statuses: `pending · paid · paid_cash · failed · refunded`.
 | `GET` | `/api/orders?status=&type=&page=` | list with `status_label` and `item_count` |
 | `GET` | `/api/orders/:id` | order + items/shopping_items + timeline + messages + receipts + `delivery_pin` (customer only) |
 | `GET` | `/api/orders/:id/tracking` | `{active, progress, rider, rider_position, pickup, destination, eta_minutes}` |
+| | ↳ tracking also returns `position_source` (`gps`\|`estimated`), `accuracy_m`, `last_fix_seconds_ago`, `distance_km`, and `trail[]` (the path the phone recorded) |
 | `GET` | `/api/orders/:id/events` | raw audit timeline |
 | `POST` | `/api/orders/:id/cancel` | `{reason}` — refunds captured payment to wallet |
 | `POST` | `/api/orders/:id/confirm-delivery` | `delivered → completed` + settlement |
@@ -110,6 +111,7 @@ Payment statuses: `pending · paid · paid_cash · failed · refunded`.
 | `POST` | `/api/worker/jobs/:orderId/receipts` | `{data_url, amount?, note?}` (image or PDF data URL, ≤4 MB) |
 | `POST` | `/api/worker/jobs/:orderId/purchased` | `approved → purchased → ready_for_delivery`, offers riders |
 | `POST` | `/api/worker/jobs/:orderId/pickup` | rider: `→ picked_up` |
+| `POST` | `/api/worker/jobs/:orderId/location` | rider's live GPS: `{lat, lng, accuracy?, speed?, heading?}` → `201`; `202` if the phone reports faster than every 1.5 s; `403` if you are not the rider on this delivery; `400` outside the delivery |
 | `POST` | `/api/worker/jobs/:orderId/in-transit` | rider: `→ in_transit` |
 | `POST` | `/api/worker/jobs/:orderId/location` | rider GPS ping hook |
 | `POST` | `/api/worker/jobs/:orderId/deliver` | `{pin, photo?}` — **wrong PIN → 400** |

@@ -325,15 +325,59 @@ router.post(
   })
 );
 
+/**
+ * The rider's phone reports where it is, so the customer's map shows the actual
+ * bike on the actual street rather than a dot sliding along a straight line.
+ *
+ * Deliberately strict: only the rider assigned to this delivery can report, only
+ * while the delivery is live, coordinates must be real numbers inside the valid
+ * range, and one phone cannot flood the table — the newest fix is what the map
+ * needs, extra ones only cost disk.
+ */
+const ACTIVE_DELIVERY = ['rider_assigned', 'picked_up', 'in_transit'];
+const MIN_PING_GAP_MS = 1500;
+
 router.post(
   '/worker/jobs/:orderId/location',
   requireAuth,
   workerOnly,
   asyncHandler(async (req, res) => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.orderId);
-    if (!order || order.rider_id !== req.user.id) throw forbidden();
-    db.prepare('UPDATE orders SET updated_at = ? WHERE id = ?').run(now(), order.id);
-    res.json({ ok: true });
+    if (!order || order.rider_id !== req.user.id) throw forbidden('This delivery is not assigned to you.');
+    if (!ACTIVE_DELIVERY.includes(order.status)) throw bad('This delivery is not running any more.');
+
+    const lat = Number(req.body?.lat);
+    const lng = Number(req.body?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw bad('A latitude and longitude are required.');
+    if (lat < -90 || lat > 90) throw bad('That latitude is not a place on Earth.');
+    if (lng < -180 || lng > 180) throw bad('That longitude is not a place on Earth.');
+
+    const accuracy = Number.isFinite(Number(req.body?.accuracy)) ? Math.max(0, Number(req.body.accuracy)) : null;
+    const speed = Number.isFinite(Number(req.body?.speed)) ? Number(req.body.speed) : null;
+    const heading = Number.isFinite(Number(req.body?.heading)) ? Number(req.body.heading) : null;
+
+    const last = order.rider_updated_at ? new Date(order.rider_updated_at).getTime() : 0;
+    if (last && Date.now() - last < MIN_PING_GAP_MS) {
+      // not an error: the phone simply asked twice in quick succession
+      return res.status(202).json({ ok: true, throttled: true, last_fix_at: order.rider_updated_at });
+    }
+
+    const at = now();
+    db.prepare(
+      'INSERT INTO rider_pings (id,order_id,rider_id,lat,lng,accuracy,speed,heading,created_at) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(uid('ping'), order.id, req.user.id, lat, lng, accuracy, speed, heading, at);
+    db.prepare(
+      'UPDATE orders SET rider_lat = ?, rider_lng = ?, rider_accuracy = ?, rider_updated_at = ?, updated_at = ? WHERE id = ?'
+    ).run(lat, lng, accuracy, at, at, order.id);
+
+    // keep a generous trail and nothing more
+    db.prepare(
+      `DELETE FROM rider_pings WHERE order_id = ? AND id NOT IN (
+         SELECT id FROM rider_pings WHERE order_id = ? ORDER BY created_at DESC LIMIT 200
+       )`
+    ).run(order.id, order.id);
+
+    res.status(201).json({ ok: true, at, lat, lng });
   })
 );
 

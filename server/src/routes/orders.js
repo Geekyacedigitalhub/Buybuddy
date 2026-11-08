@@ -19,6 +19,18 @@ import { orderEvents } from '../lib/orders.js';
 
 const router = Router();
 
+/** Straight-line distance in kilometres — good enough for an ETA from GPS. */
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
 /** Central authorisation check for a single order. */
 export function canAccessOrder(user, order) {
   if (!user || !order) return false;
@@ -409,16 +421,52 @@ router.get(
     const to = address.lat && address.lng
       ? { lat: address.lat, lng: address.lng }
       : { lat: 6.6018, lng: 3.3515 };
-    const pos = { lat: from.lat + (to.lat - from.lat) * progress, lng: from.lng + (to.lng - from.lng) * progress };
+    const estimated = { lat: from.lat + (to.lat - from.lat) * progress, lng: from.lng + (to.lng - from.lng) * progress };
+
+    /**
+     * A GPS fix is only worth showing while it is fresh. If the rider's phone
+     * went quiet two minutes ago, a confident dot in the wrong place is worse
+     * than an honest estimate — so the map falls back and says so.
+     */
+    const GPS_FRESH_MS = 120_000;
+    const fixAge = order.rider_updated_at ? Date.now() - new Date(order.rider_updated_at).getTime() : null;
+    const gpsLive = active && order.rider_lat != null && order.rider_lng != null && fixAge != null && fixAge <= GPS_FRESH_MS;
+
+    const trail = gpsLive
+      ? db
+          .prepare('SELECT lat,lng,created_at FROM rider_pings WHERE order_id = ? ORDER BY created_at ASC LIMIT 200')
+          .all(order.id)
+      : [];
+
+    const rider_position = !active
+      ? null
+      : gpsLive
+        ? { lat: order.rider_lat, lng: order.rider_lng }
+        : estimated;
+
+    // With a real fix we can quote a distance-based ETA; without one, fall back
+    // to the progress estimate.
+    let eta = active ? Math.max(2, Math.round(18 * (1 - progress))) : null;
+    if (gpsLive) {
+      const km = haversineKm(order.rider_lat, order.rider_lng, to.lat, to.lng);
+      const minutes = Math.round((km / 18) * 60) + 2; // 18 km/h through Lagos traffic, plus handover time
+      eta = Math.max(1, Math.min(minutes, 120));
+    }
+
     res.json({
       active,
       status: order.status,
-      progress,
+      progress: gpsLive ? Math.max(0, Math.min(1, 1 - haversineKm(order.rider_lat, order.rider_lng, to.lat, to.lng) / Math.max(0.2, haversineKm(from.lat, from.lng, to.lat, to.lng)))) : progress,
       rider,
-      rider_position: active ? pos : null,
+      rider_position,
+      position_source: gpsLive ? 'gps' : 'estimated',
+      accuracy_m: gpsLive ? order.rider_accuracy : null,
+      last_fix_seconds_ago: fixAge != null && gpsLive ? Math.round(fixAge / 1000) : null,
+      trail: trail.map((t) => ({ lat: t.lat, lng: t.lng, at: t.created_at })),
       pickup: { lat: from.lat, lng: from.lng, label: store?.name || 'Store' },
       destination: { lat: to.lat, lng: to.lng, label: address.line1 || 'Delivery address' },
-      eta_minutes: active ? Math.max(2, Math.round(18 * (1 - progress))) : null,
+      eta_minutes: eta,
+      distance_km: gpsLive ? Number(haversineKm(order.rider_lat, order.rider_lng, to.lat, to.lng).toFixed(2)) : null,
     });
   })
 );

@@ -741,3 +741,84 @@ test('uploads refuse anything that is not a real photo', async () => {
   const junk = await api('/api/uploads', { method: 'POST', token, body: { data_url: 'not-a-data-url' } });
   assert.equal(junk.status, 400);
 });
+
+/* ---------------------------------------------------------------------------
+ * Live rider GPS. The map used to draw a dot sliding along a straight line; now
+ * the rider's phone reports where it really is — if, and only if, it is the
+ * rider on that delivery.
+ * ------------------------------------------------------------------------- */
+test('rider GPS reaches the customer map, and only from the assigned rider', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  const rider = await login('rider@buybuddy.ng');
+  const rider2 = await login('rider2@buybuddy.ng');
+
+  // walk a fresh order to "on the way" (wallet payment keeps it deterministic)
+  const addresses = await api('/api/addresses', { token: customer });
+  const addressId = addresses.body.addresses[0].id;
+  await api('/api/wallet/topup', { method: 'POST', token: customer, body: { amount: 60000 } });
+  const products = await api('/api/products?limit=50');
+  const item = products.body.products.find((p) => p.store.name === 'GreenMart Supermarket');
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 2 } });
+  const checkout = await api('/api/orders/checkout', {
+    method: 'POST', token: customer,
+    headers: { 'Idempotency-Key': `gps-${Date.now()}` },
+    body: { address_id: addressId, payment_method: 'wallet' },
+  });
+  const orderId = checkout.body.order.id;
+  await api(`/api/merchant/orders/${orderId}/accept`, { method: 'POST', token: merchant });
+  await api(`/api/merchant/orders/${orderId}/ready`, { method: 'POST', token: merchant });
+  await api(`/api/worker/jobs/${orderId}/accept`, { method: 'POST', token: rider, body: { role: 'rider' } });
+  await api(`/api/worker/jobs/${orderId}/pickup`, { method: 'POST', token: rider });
+  await api(`/api/worker/jobs/${orderId}/in-transit`, { method: 'POST', token: rider });
+
+  const POST = `/api/worker/jobs/${orderId}/location`;
+
+  // whoever is holding the phone must actually be the rider on this delivery
+  const anon = await api(POST, { method: 'POST', body: { lat: 6.45, lng: 3.47 } });
+  assert.equal(anon.status, 401);
+  const stranger = await api(POST, { method: 'POST', token: rider2, body: { lat: 6.45, lng: 3.47 } });
+  assert.equal(stranger.status, 403, 'another rider cannot move the marker on someone else delivery');
+
+  // nonsense coordinates are refused rather than stored
+  assert.equal((await api(POST, { method: 'POST', token: rider, body: { lat: 'x', lng: 3.4 } })).status, 400);
+  assert.equal((await api(POST, { method: 'POST', token: rider, body: { lat: 999, lng: 3.4 } })).status, 400);
+
+  // a real fix from the phone
+  const fix = { lat: 6.4491, lng: 3.4552, accuracy: 12, speed: 6.2, heading: 88 };
+  const sent = await api(POST, { method: 'POST', token: rider, body: fix });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+
+  const tracking = await api(`/api/orders/${orderId}/tracking`, { token: customer });
+  assert.equal(tracking.status, 200);
+  assert.equal(tracking.body.position_source, 'gps', 'the customer is shown the real position');
+  assert.equal(tracking.body.rider_position.lat, fix.lat);
+  assert.equal(tracking.body.rider_position.lng, fix.lng);
+  assert.equal(tracking.body.accuracy_m, 12);
+  assert.ok(tracking.body.eta_minutes >= 1 && tracking.body.eta_minutes <= 120);
+  assert.ok(tracking.body.distance_km > 0);
+  assert.equal(tracking.body.trail.length, 1);
+  assert.equal(tracking.body.trail[0].lat, fix.lat);
+
+  // a second phone call within two seconds must not pile rows into the table
+  const tooSoon = await api(POST, { method: 'POST', token: rider, body: { lat: 6.4493, lng: 3.4559 } });
+  assert.equal(tooSoon.status, 202);
+  assert.equal(tooSoon.body.throttled, true);
+
+  // ...but a moment later the trail grows, which is what the map draws
+  await new Promise((r) => setTimeout(r, 1600));
+  const second = await api(POST, { method: 'POST', token: rider, body: { lat: 6.4493, lng: 3.4559 } });
+  assert.equal(second.status, 201);
+  const after = await api(`/api/orders/${orderId}/tracking`, { token: customer });
+  assert.equal(after.body.trail.length, 2);
+  assert.equal(after.body.rider_position.lat, 6.4493);
+
+  // once the delivery is finished the rider's phone cannot keep reporting
+  const detail = await api(`/api/orders/${orderId}`, { token: customer });
+  await api(`/api/worker/jobs/${orderId}/deliver`, {
+    method: 'POST', token: rider, body: { pin: detail.body.delivery_pin },
+  });
+  const late = await api(POST, { method: 'POST', token: rider, body: { lat: 6.45, lng: 3.46 } });
+  assert.equal(late.status, 400, 'reporting stops when the delivery ends');
+});

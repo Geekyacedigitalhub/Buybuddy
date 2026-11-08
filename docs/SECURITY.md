@@ -67,3 +67,22 @@ takes, and why each step exists:
 
 Tests in `server/test/api.test.js` cover the happy path plus disguised HTML,
 SVG and oversized payloads.
+
+## Rider location
+
+Location is the most sensitive thing BUYBUDDY holds, so it is collected as little as possible:
+
+- **Off by default.** A rider taps *Share* on the job screen; nothing is sent before that.
+- **Scoped to one delivery.** Only the rider assigned to that order can report (`403` otherwise), and
+  only while the delivery is `rider_assigned`, `picked_up` or `in_transit`. When the PIN is entered and
+  the delivery is done, the phone's reports are refused with `400`.
+- **Bounded input.** Latitude and longitude must be real numbers inside the valid ranges; anything else
+  is `400` and never stored.
+- **Rate limited.** One fix every 1.5 seconds per order — a phone that retries in a loop gets `202` and
+  writes nothing.
+- **Pruned.** Only the newest 200 fixes per order are kept, which is enough to draw the travelled path.
+- **Honest by design.** The customer's map only shows a GPS dot for 120 seconds after the last fix; after
+  that it says *Estimated position* rather than pretending an old fix is current.
+
+The Play Store data-safety form must declare **precise location** — see
+`Buybuddy-Play-Store/listing.md`.

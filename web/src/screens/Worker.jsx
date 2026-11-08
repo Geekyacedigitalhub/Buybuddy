@@ -5,6 +5,7 @@ import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
   useAuth, useToast,
 } from '../lib/ui.jsx';
+import LiveLocation from '../components/LiveLocation.jsx';
 
 export default function WorkerApp() {
   return (
@@ -357,6 +358,10 @@ function TaskDetail() {
             ))}
           </div>
         </section>
+      )}
+
+      {isRider && ['rider_assigned', 'picked_up', 'in_transit'].includes(order.status) && (
+        <LiveLocation orderId={order.id} status={order.status} />
       )}
 
       <div className="card col" style={{ gap: 10 }}>

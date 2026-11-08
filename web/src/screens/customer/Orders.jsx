@@ -176,6 +176,7 @@ export function OrderDetail() {
                 pickup={tracking.pickup}
                 destination={tracking.destination}
                 rider={tracking.rider_position}
+                trail={tracking.trail}
                 fallback={<MapSvg from={tracking.pickup} to={tracking.destination} pos={tracking.rider_position} />}
               />
             </React.Suspense>
@@ -184,6 +185,22 @@ export function OrderDetail() {
                 {tracking.rider?.name} · {tracking.pickup.label} → {tracking.destination.label}
               </span>
               <Badge tone="badge-green">{(tracking.progress || 0) > 0.5 ? 'Arriving' : 'On the way'}</Badge>
+            </div>
+            <div className="row wrap" style={{ gap: 8, marginTop: 6 }}>
+              {tracking.position_source === 'gps' ? (
+                <Badge tone="badge-green">
+                  <span className="loc-dot" data-on="yes" /> Live GPS
+                  {tracking.last_fix_seconds_ago != null ? ` · ${tracking.last_fix_seconds_ago}s ago` : ''}
+                </Badge>
+              ) : (
+                <Badge tone="badge-muted">
+                  {/* Honesty beats a confident wrong dot. */}
+                  <Icon name="pin" size={11} /> Estimated position
+                </Badge>
+              )}
+              {tracking.distance_km != null && (
+                <span className="tiny muted">{tracking.distance_km} km to go</span>
+              )}
             </div>
           </div>
         )}

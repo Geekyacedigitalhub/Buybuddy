@@ -38,4 +38,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Riders share their position while a delivery is running; the app asks
+         for this at that moment, not on first launch. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Any phone with a GPS; Play filters out devices that cannot do it. -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 </manifest>

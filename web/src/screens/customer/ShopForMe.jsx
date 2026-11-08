@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, naira, toDataUrl } from '../../lib/api.js';
+import { api, naira, toDataUrl, assetUrl } from '../../lib/api.js';
 import {
   Badge, Button, Field, Icon, Input, Loading, Modal, Select, Textarea, useToast,
 } from '../../lib/ui.jsx';
@@ -194,7 +194,7 @@ export default function ShopForMe() {
             </div>
             {it.image && (
               <div className="row" style={{ gap: 8 }}>
-                <img src={it.image} alt="attachment" style={{ width: 54, height: 54, borderRadius: 10, objectFit: 'cover' }} />
+                <img src={assetUrl(it.image)} alt="attachment" style={{ width: 54, height: 54, borderRadius: 10, objectFit: 'cover' }} />
                 <span className="tiny muted">Photo attached</span>
               </div>
             )}

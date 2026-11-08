@@ -41,3 +41,29 @@
 
 Security issues should be reported privately to the client's designated security contact, not in
 public issue trackers.
+
+## Merchant photo uploads
+
+Merchants add photos from their phone instead of pasting links. The path a file
+takes, and why each step exists:
+
+1. **On the device** — `web/src/lib/photos.js` draws the picture onto a canvas at
+   1200 px on the long edge, fills white behind it (transparent PNG logos would
+   otherwise turn black), and re-encodes it as JPEG at quality 0.82. A 5 MB phone
+   photo leaves the device at roughly 200 kB, so uploads stay fast on 3G.
+2. **Over the wire** — the compressed image goes to `POST /api/uploads` as a data
+   URL. Sign-in is required; anonymous uploads get `401`.
+3. **On arrival** — the server ignores the file name and the declared MIME type
+   and sniffs the first bytes instead. Only real JPEG (`FF D8 FF`), PNG
+   (`89 50 4E 47`) and WebP (`RIFF….WEBP`) payloads are written to disk.
+   Anything else is rejected with `415`, and SVG is refused outright because it
+   can carry script. Bodies over 6 MB get `413`. Stored names are generated
+   (`img_<random>.<ext>`), so a merchant cannot choose a path or overwrite
+   another shop's file.
+4. **On the way out** — `/uploads` is served with `X-Content-Type-Options:
+   nosniff`, `Content-Security-Policy: default-src 'none'; img-src 'self'`, and
+   `Cross-Origin-Resource-Policy: same-site`, so a stored file can be displayed
+   as a picture and nothing else.
+
+Tests in `server/test/api.test.js` cover the happy path plus disguised HTML,
+SVG and oversized payloads.

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
-import { api, naira, pretty, timeAgo, statusTone } from '../lib/api.js';
+import { api, naira, pretty, timeAgo, statusTone, assetUrl } from '../lib/api.js';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, StatusBadge,
   Textarea, useAuth, useToast,
 } from '../lib/ui.jsx';
 import Shell, { Kpi, Bars } from '../components/Shell.jsx';
+import PhotoPicker from '../components/PhotoPicker.jsx';
 
 const NAV = [
   { to: '/merchant', label: 'Dashboard', icon: 'chart', end: true },
@@ -336,7 +337,7 @@ function Products({ me }) {
                 <tr key={p.id}>
                   <td>
                     <div className="row" style={{ gap: 10 }}>
-                      <img src={p.image} alt="" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover' }} />
+                      <img src={assetUrl(p.image)} alt="" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover' }} />
                       <span className="strong" style={{ fontSize: 13 }}>{p.name}</span>
                     </div>
                   </td>
@@ -373,9 +374,18 @@ function Products({ me }) {
             </Select>
           </Field>
           <Field label="Description"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <Field label="Image URL (optional)" hint="Uploads are supported through /api/uploads in production.">
-            <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://…" />
-          </Field>
+          <PhotoPicker
+            label="Product photo"
+            value={form.image}
+            onChange={(url) => setForm((f) => ({ ...f, image: url }))}
+            onError={(m) => toast.error(m)}
+            hint="Take a photo of the item with your camera, or pick one from your gallery."
+          />
+          {(!form.image || /^https?:/i.test(form.image)) && (
+            <Field label="Or paste an image link" hint="Only if the photo already lives on the internet.">
+              <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://…" />
+            </Field>
+          )}
         </div>
       </Modal>
     </Shell>
@@ -444,6 +454,7 @@ function StoreSettings({ me, reload }) {
         name: form.name, description: form.description, area: form.area, city: form.city,
         phone: form.phone, opens_at: form.opens_at, closes_at: form.closes_at,
         prep_minutes: Number(form.prep_minutes), min_order: Number(form.min_order),
+        logo: form.logo || null, cover: form.cover || null,
       });
       toast.success('Store updated');
       reload();
@@ -466,6 +477,29 @@ function StoreSettings({ me, reload }) {
             <Field label="Prep (min)"><Input type="number" value={form.prep_minutes || ''} onChange={set('prep_minutes')} /></Field>
           </div>
           <Field label="Minimum order (₦)"><Input type="number" value={form.min_order || ''} onChange={set('min_order')} /></Field>
+
+          <div className="row wrap" style={{ gap: 16 }}>
+            <PhotoPicker
+              label="Store logo"
+              value={form.logo || ''}
+              onChange={(url) => setForm((f) => ({ ...f, logo: url }))}
+              onError={(m) => toast.error(m)}
+              size={104}
+              hint="A square photo or your signboard works well."
+              doneHint="This is the little badge customers see next to your shop name."
+            />
+            <PhotoPicker
+              label="Storefront photo"
+              value={form.cover || ''}
+              onChange={(url) => setForm((f) => ({ ...f, cover: url }))}
+              onError={(m) => toast.error(m)}
+              size={168}
+              aspect="16 / 9"
+              hint="Shown as a wide banner at the top of your shop page."
+              doneHint="This banner sits at the top of your shop page."
+            />
+          </div>
+
           <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</Button>
         </div>
         <div className="card">

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, naira, shortDate } from '../../lib/api.js';
+import { api, naira, shortDate, assetUrl } from '../../lib/api.js';
 import { InstallBanner } from '../../components/InstallApp.jsx';
 import {
   Badge, Button, Empty, Icon, Loading, Modal, Money, SectionHead, Skeleton, Stars, StatusBadge,
@@ -92,7 +92,7 @@ export function Home() {
         >
           {banner.image && !banner.image.startsWith('data:') ? (
             <img
-              src={banner.image}
+              src={assetUrl(banner.image)}
               alt=""
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
               loading="lazy"
@@ -159,7 +159,7 @@ export function Home() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
           {data.popular_stores.map((s) => (
             <Link key={s.id} to={`/store/${s.id}`} className="store-card">
-              <span className="store-logo"><img src={s.logo} alt="" /></span>
+              <span className="store-logo"><img src={assetUrl(s.logo)} alt="" /></span>
               <div className="grow">
                 <div className="row" style={{ gap: 6 }}>
                   <span className="strong" style={{ fontSize: 14 }}>{s.name}</span>
@@ -238,7 +238,7 @@ export function ProductCard({ product, compact }) {
   return (
     <div className="prod" onClick={() => nav(`/product/${product.id}`)} role="button" tabIndex={0}>
       <div className="prod-img">
-        <img src={product.image} alt={product.name} loading="lazy" />
+        <img src={assetUrl(product.image)} alt={product.name} loading="lazy" />
         {product.compare_at > product.price && (
           <span className="badge badge-orange" style={{ position: 'absolute', top: 8, left: 8 }}>
             -{Math.round(((product.compare_at - product.price) / product.compare_at) * 100)}%
@@ -330,7 +330,7 @@ export function SearchPage() {
               <div className="col" style={{ gap: 8 }}>
                 {data.stores.map((s) => (
                   <Link key={s.id} to={`/store/${s.id}`} className="store-card">
-                    <span className="store-logo"><img src={s.logo} alt="" /></span>
+                    <span className="store-logo"><img src={assetUrl(s.logo)} alt="" /></span>
                     <div className="grow">
                       <div className="strong" style={{ fontSize: 14 }}>{s.name}</div>
                       <div className="sub">{s.area}</div>
@@ -435,8 +435,13 @@ export function StorePage() {
   return (
     <div className="page col">
       <button className="btn btn-ghost btn-icon" onClick={() => nav(-1)} style={{ alignSelf: 'flex-start' }}><Icon name="left" /></button>
+      {store.cover && (
+        <div className="store-cover">
+          <img src={assetUrl(store.cover)} alt="" loading="lazy" />
+        </div>
+      )}
       <div className="card" style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-        <span className="store-logo" style={{ width: 64, height: 64 }}><img src={store.logo} alt="" /></span>
+        <span className="store-logo" style={{ width: 64, height: 64 }}><img src={assetUrl(store.logo)} alt="" /></span>
         <div className="grow">
           <div className="row" style={{ gap: 8 }}>
             <span className="h2">{store.name}</span>
@@ -545,12 +550,12 @@ export function ProductPage() {
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)', gap: 18 }}>
         <div className="card card-flush" style={{ padding: 0 }}>
-          <img src={product.image} alt={product.name} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
+          <img src={assetUrl(product.image)} alt={product.name} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
         </div>
 
         <div className="col" style={{ gap: 8 }}>
           <Link to={`/store/${store.id}`} className="row" style={{ gap: 8 }}>
-            <span className="store-logo" style={{ width: 30, height: 30, borderRadius: 9 }}><img src={store.logo} alt="" /></span>
+            <span className="store-logo" style={{ width: 30, height: 30, borderRadius: 9 }}><img src={assetUrl(store.logo)} alt="" /></span>
             <span className="strong" style={{ fontSize: 13 }}>{store.name}</span>
             <Icon name="right" size={14} style={{ color: 'var(--ink-3)' }} />
           </Link>

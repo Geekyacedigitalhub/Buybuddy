@@ -91,7 +91,16 @@ app as broken.
 
 ---
 
-## 4. Maps — live rider tracking ✅ already done, for free
+## 4. Photos — merchants upload them in the app ✅ already done, for free
+
+Merchants used to need a photo already hosted somewhere. Now the product form and
+Store settings have a photo picker that opens the phone camera or gallery, shrinks
+the picture on the device and stores it on your server — no Cloudinary, no S3, no
+monthly bill. One caveat: on the free Render plan the disk is temporary, so
+uploads survive until the service restarts. The paid plan ($7/month) or a disk
+add-on keeps them, and moving to real file storage is noted in `docs/SECURITY.md`.
+
+## 5. Maps — live rider tracking ✅ already done, for free
 
 There is nothing to set up here. Tracking uses **OpenStreetMap tiles with Leaflet**, both of which are
 free and need no account, no API key and no card on file. The map on the order screen draws the shop,
@@ -106,8 +115,8 @@ Google Maps key is worth paying for. Nothing breaks without one.
 2. **Paystack** — so a customer who installs from the Play Store can actually pay you.
 3. **Termii** — so a real phone number can sign up.
 
-That is the whole list. Maps are already live and free; the app, the design, checkout, tracking and the
-merchant dashboard are done.
+That is the whole list. Maps are already live and free, and merchants can shoot photos of their own
+stock inside the app; the app, the design, checkout, tracking and the merchant dashboard are done.
 
 ## Checking your work
 

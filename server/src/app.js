@@ -100,25 +100,51 @@ export function createApp() {
     }
   });
 
-  /* Simple upload endpoint: accepts a data URL, stores it on disk, returns a URL. */
+  /* Photo upload: accepts a base64 data URL, stores it on disk, returns a URL.
+     Uploads are the one place a stranger writes a file we later serve, so the
+     bytes are inspected rather than trusted: only real JPEG, PNG and WebP images
+     are kept, and the type comes from the magic number, never from the
+     Content-Type the client claims. That is what stops someone storing an HTML
+     or SVG page that would then run on this origin. */
+  const IMAGE_TYPES = [
+    { ext: 'jpg', type: 'image/jpeg', test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+    { ext: 'png', type: 'image/png', test: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
+    { ext: 'webp', type: 'image/webp', test: (b) => b.slice(0, 4).toString('ascii') === 'RIFF' && b.slice(8, 12).toString('ascii') === 'WEBP' },
+  ];
+
   app.post('/api/uploads', requireAuth, (req, res, next) => {
     try {
-      const { data_url, file_name } = req.body || {};
+      const { data_url } = req.body || {};
       if (!data_url || !/^data:/.test(data_url)) return res.status(400).json({ error: 'Expected a base64 data URL.' });
       const m = /^data:(.+?);base64,(.*)$/.exec(data_url);
       if (!m) return res.status(400).json({ error: 'Malformed data URL.' });
-      if (Buffer.byteLength(m[2], 'base64') > 5 * 1024 * 1024) return res.status(413).json({ error: 'File too large (max 5 MB).' });
-      const ext = (m[1].split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '');
-      const name = `${uid('img')}.${ext}`;
-      fs.writeFileSync(path.join(DATA_DIR, 'uploads', name), Buffer.from(m[2], 'base64'));
-      res.status(201).json({ url: `/uploads/${name}`, file_name: file_name || name });
+
+      const bytes = Buffer.from(m[2], 'base64');
+      if (!bytes.length) return res.status(400).json({ error: 'That file is empty.' });
+      if (bytes.length > 6 * 1024 * 1024) return res.status(413).json({ error: 'Photo too large — please use one under 6 MB.' });
+
+      const kind = IMAGE_TYPES.find((t) => bytes.length > 12 && t.test(bytes));
+      if (!kind) return res.status(415).json({ error: 'Only JPG, PNG or WebP photos can be uploaded.' });
+
+      const name = `${uid('img')}.${kind.ext}`;
+      fs.writeFileSync(path.join(DATA_DIR, 'uploads', name), bytes);
+      res.status(201).json({ url: `/uploads/${name}`, bytes: bytes.length });
     } catch (e) {
       next(e);
     }
   });
 
   /* Static: uploaded files + the built web app (single-origin deployment). */
-  app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads'), { maxAge: '7d' }));
+  app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads'), {
+    maxAge: '7d',
+    setHeaders(res) {
+      // Belt and braces: even if a bad file slipped through, the browser must not
+      // sniff it into something executable, nor let it run in a page context.
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'");
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+    },
+  }));
   const webDist = path.join(ROOT, '..', 'web', 'dist');
   if (fs.existsSync(webDist)) {
     /* PWA files must never be served stale: a cached service worker or manifest

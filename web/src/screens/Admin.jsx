@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
-import { api, naira, nairaShort, pretty, timeAgo } from '../lib/api.js';
+import { api, naira, nairaShort, pretty, timeAgo, assetUrl } from '../lib/api.js';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, StatusBadge,
   Textarea, useToast,
@@ -373,7 +373,7 @@ function Merchants() {
               <tr key={m.id}>
                 <td>
                   <div className="row" style={{ gap: 8 }}>
-                    {m.logo && <img src={m.logo} alt="" style={{ width: 30, height: 30, borderRadius: 8 }} />}
+                    {m.logo && <img src={assetUrl(m.logo)} alt="" style={{ width: 30, height: 30, borderRadius: 8 }} />}
                     <span className="strong" style={{ fontSize: 13 }}>{m.name}</span>
                   </div>
                 </td>

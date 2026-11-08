@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress } from '../../lib/api.js';
+import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress, assetUrl } from '../../lib/api.js';
 /* Leaflet is ~45 kB of map code that only one screen needs, so it loads on
    demand: the rest of the app stays light and the map still appears instantly. */
 const DeliveryMap = React.lazy(() => import('../../components/DeliveryMap.jsx'));
@@ -46,7 +46,7 @@ export function Orders() {
               {o.type === 'personal'
                 ? <Icon name="bag" size={21} style={{ color: 'var(--green-700)' }} />
                 : (o.store?.logo
-                  ? <img src={o.store.logo} alt="" style={{ width: 46, height: 46, borderRadius: 13, objectFit: 'cover' }} />
+                  ? <img src={assetUrl(o.store.logo)} alt="" style={{ width: 46, height: 46, borderRadius: 13, objectFit: 'cover' }} />
                   : <Icon name="shop" size={21} style={{ color: 'var(--green-700)' }} />)}
             </div>
             <div className="grow">
@@ -338,7 +338,7 @@ export function OrderDetail() {
           {order.type === 'personal'
             ? (order.shopping_items || []).map((it, i) => (
               <div key={it.id} className="row" style={{ gap: 12, padding: 14, borderTop: i ? '1px solid var(--line)' : 'none' }}>
-                <img src={it.image} alt="" style={{ width: 46, height: 46, borderRadius: 11, objectFit: 'cover', background: 'var(--green-50)' }} />
+                <img src={assetUrl(it.image)} alt="" style={{ width: 46, height: 46, borderRadius: 11, objectFit: 'cover', background: 'var(--green-50)' }} />
                 <div className="grow">
                   <div className="strong" style={{ fontSize: 13.5 }}>{it.description} × {it.qty}</div>
                   {it.proposed_name && <div className="sub">Found: {it.proposed_name}{it.proposed_price ? ` — ${naira(it.proposed_price)}` : ''}</div>}
@@ -349,7 +349,7 @@ export function OrderDetail() {
             ))
             : (order.items || []).map((it, i) => (
               <div key={it.id} className="row" style={{ gap: 12, padding: 14, borderTop: i ? '1px solid var(--line)' : 'none' }}>
-                <img src={it.image} alt="" style={{ width: 46, height: 46, borderRadius: 11, objectFit: 'cover', background: 'var(--green-50)' }} />
+                <img src={assetUrl(it.image)} alt="" style={{ width: 46, height: 46, borderRadius: 11, objectFit: 'cover', background: 'var(--green-50)' }} />
                 <div className="grow">
                   <div className="strong" style={{ fontSize: 13.5 }}>{it.name}</div>
                   <div className="sub">{naira(it.price)} × {it.qty}</div>

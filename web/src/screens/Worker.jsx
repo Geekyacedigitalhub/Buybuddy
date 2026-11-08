@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { api, naira, pretty, timeAgo, fmtAddress, toDataUrl } from '../lib/api.js';
+import { api, naira, pretty, timeAgo, fmtAddress, toDataUrl, assetUrl } from '../lib/api.js';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
   useAuth, useToast,
@@ -424,7 +424,7 @@ function TaskDetail() {
             <div className="sub" style={{ marginTop: 6 }}>{receipt.data_url ? 'Photo selected — tap to change' : 'Tap to photograph the receipt'}</div>
             <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => e.target.files[0] && uploadReceipt(e.target.files[0])} />
           </label>
-          {receipt.data_url && <img src={receipt.data_url} alt="receipt" style={{ borderRadius: 12, maxHeight: 200, objectFit: 'contain' }} />}
+          {receipt.data_url && <img src={assetUrl(receipt.data_url)} alt="receipt" style={{ borderRadius: 12, maxHeight: 200, objectFit: 'contain' }} />}
           <Field label="Amount on receipt (₦)"><Input type="number" value={receipt.amount} onChange={(e) => setReceipt({ ...receipt, amount: e.target.value })} /></Field>
           <Field label="Note"><Input value={receipt.note} onChange={(e) => setReceipt({ ...receipt, note: e.target.value })} placeholder="Store receipt" /></Field>
         </div>

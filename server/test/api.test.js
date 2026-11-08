@@ -673,3 +673,71 @@ test('OTP signup still works end to end without an SMS provider', async () => {
   // development hands the code back so the flow stays testable without credit
   assert.ok(body.dev_code || process.env.SMS_PROVIDER, 'a code is either returned or texted');
 });
+
+/* ---------------------------------------------------------------------------
+ * Photo upload — the path a merchant takes from "photo on my phone" to a
+ * product page. Also the one place a stranger writes a file we serve back.
+ * ------------------------------------------------------------------------- */
+const TINY_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const TINY_JPEG =
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+
+test('merchant can upload a product photo and the app can serve it back', async () => {
+  const token = await login('merchant1@buybuddy.ng');
+
+  // the obvious failure first: no auth
+  const anon = await api('/api/uploads', { method: 'POST', body: { data_url: `data:image/png;base64,${TINY_PNG}` } });
+  assert.equal(anon.status, 401, 'uploads must require sign-in');
+
+  const up = await api('/api/uploads', {
+    method: 'POST',
+    token,
+    body: { data_url: `data:image/png;base64,${TINY_PNG}` },
+  });
+  assert.equal(up.status, 201, JSON.stringify(up.body));
+  assert.match(up.body.url, /^\/uploads\/img_[A-Za-z0-9]+\.png$/, 'returns a stable, same-origin URL');
+
+  const fetched = await fetch(base + up.body.url);
+  assert.equal(fetched.status, 200);
+  assert.match(fetched.headers.get('content-type') || '', /image\/png/);
+  assert.equal(fetched.headers.get('x-content-type-options'), 'nosniff', 'stored files must never be sniffed into scripts');
+
+  // a JPEG is accepted too, and stored under its real extension
+  const jpg = await api('/api/uploads', {
+    method: 'POST',
+    token,
+    body: { data_url: `data:image/jpeg;base64,${TINY_JPEG}` },
+  });
+  assert.equal(jpg.status, 201);
+  assert.match(jpg.body.url, /\.jpg$/);
+});
+
+test('uploads refuse anything that is not a real photo', async () => {
+  const token = await login('merchant1@buybuddy.ng');
+
+  // an HTML page labelled as a PNG: the magic-number check catches it
+  const html = Buffer.from('<html><script>alert(1)</script></html>').toString('base64');
+  const disguised = await api('/api/uploads', {
+    method: 'POST', token, body: { data_url: `data:image/png;base64,${html}` },
+  });
+  assert.equal(disguised.status, 415, 'a script must never be stored as an image');
+
+  // SVG can carry script, so it is refused outright
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64');
+  const vector = await api('/api/uploads', {
+    method: 'POST', token, body: { data_url: `data:image/svg+xml;base64,${svg}` },
+  });
+  assert.equal(vector.status, 415);
+
+  // oversized payloads stop well before they touch the disk
+  const huge = 'A'.repeat(9 * 1024 * 1024);
+  const big = await api('/api/uploads', {
+    method: 'POST', token, body: { data_url: `data:image/jpeg;base64,${huge}` },
+  });
+  assert.equal(big.status, 413);
+
+  // and junk in the body is a clear 400, not a crash
+  const junk = await api('/api/uploads', { method: 'POST', token, body: { data_url: 'not-a-data-url' } });
+  assert.equal(junk.status, 400);
+});

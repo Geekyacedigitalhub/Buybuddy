@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress } from '../../lib/api.js';
+/* Leaflet is ~45 kB of map code that only one screen needs, so it loads on
+   demand: the rest of the app stays light and the map still appears instantly. */
+const DeliveryMap = React.lazy(() => import('../../components/DeliveryMap.jsx'));
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
   useAuth, useToast,
@@ -167,14 +170,20 @@ export function OrderDetail() {
         <div className="progress"><div style={{ width: `${Math.min(100, progress)}%` }} /></div>
 
         {tracking?.active && (
-          <div className="map-box" style={{ marginTop: 14 }}>
-            <MapSvg from={tracking.pickup} to={tracking.destination} pos={tracking.rider_position} />
-            <div className="map-rider" style={{
-              left: `${20 + (tracking.progress || 0) * 60}%`,
-              top: `${72 - (tracking.progress || 0) * 44}%`,
-            }}>🛵 {tracking.progress > 0.5 ? 'Arriving' : 'On the way'}</div>
-            <div style={{ position: 'absolute', bottom: 8, left: 10, right: 10, background: 'rgba(255,255,255,0.92)', borderRadius: 10, padding: '7px 10px', fontSize: 11.5 }}>
-              {tracking.rider?.name} · {tracking.pickup.label} → {tracking.destination.label}
+          <div style={{ marginTop: 14 }}>
+            <React.Suspense fallback={<MapSvg from={tracking.pickup} to={tracking.destination} pos={tracking.rider_position} />}>
+              <DeliveryMap
+                pickup={tracking.pickup}
+                destination={tracking.destination}
+                rider={tracking.rider_position}
+                fallback={<MapSvg from={tracking.pickup} to={tracking.destination} pos={tracking.rider_position} />}
+              />
+            </React.Suspense>
+            <div className="row-between" style={{ marginTop: 8, gap: 8 }}>
+              <span className="tiny muted">
+                {tracking.rider?.name} · {tracking.pickup.label} → {tracking.destination.label}
+              </span>
+              <Badge tone="badge-green">{(tracking.progress || 0) > 0.5 ? 'Arriving' : 'On the way'}</Badge>
             </div>
           </div>
         )}

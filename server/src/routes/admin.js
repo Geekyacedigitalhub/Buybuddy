@@ -629,9 +629,9 @@ router.get(
       {
         key: 'maps',
         label: 'Live map tracking',
-        live: Boolean(process.env.GOOGLE_MAPS_KEY),
-        detail: process.env.GOOGLE_MAPS_KEY ? 'Map key present.' : 'Tracking shows progress, not a map tile.',
-        fix: 'Set GOOGLE_MAPS_KEY (free tier is enough to start).',
+        live: true,
+        detail: 'OpenStreetMap with Leaflet — real streets, no API key, no bill.',
+        fix: '',
       },
     ];
     res.json({

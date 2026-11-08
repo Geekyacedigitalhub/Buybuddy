@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS stores (
   is_open INTEGER NOT NULL DEFAULT 1, rating_avg REAL NOT NULL DEFAULT 0, rating_count INTEGER NOT NULL DEFAULT 0,
   commission_rate REAL NOT NULL DEFAULT 0.12, opens_at TEXT DEFAULT '08:00', closes_at TEXT DEFAULT '21:00',
   prep_minutes INTEGER NOT NULL DEFAULT 20, min_order INTEGER NOT NULL DEFAULT 0,
+  lat REAL, lng REAL,
   suspended_reason TEXT, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_stores_merchant ON stores(merchant_id);
@@ -278,6 +279,9 @@ export function migrate() {
   ensureColumn('users', 'referred_by', 'TEXT');
   ensureColumn('orders', 'points_earned', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('orders', 'points_redeemed', 'INTEGER NOT NULL DEFAULT 0');
+  // storefront coordinates, so the delivery map can draw the pickup point
+  ensureColumn('stores', 'lat', 'REAL');
+  ensureColumn('stores', 'lng', 'REAL');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL');
 }
 

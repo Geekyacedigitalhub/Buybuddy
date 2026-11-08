@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   id text PRIMARY KEY, phone text NOT NULL, code text NOT NULL, purpose text NOT NULL,
   expires_at text NOT NULL, consumed integer NOT NULL DEFAULT 0, created_at text NOT NULL
 );
+-- storefront coordinates for the delivery map
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS lat double precision;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS lng double precision;
+
 CREATE TABLE IF NOT EXISTS sms_log (
   id text PRIMARY KEY, phone text NOT NULL, body text NOT NULL, provider text NOT NULL,
   status text NOT NULL, provider_ref text, error text, created_at text NOT NULL

@@ -187,6 +187,24 @@ const itemArt = (() => {
 const BANNER_PHOTOS = ['/img/products/jollof.jpg', '/img/products/tomatoes.jpg', '/img/products/eggs.jpg'];
 const bannerArt = (i) => BANNER_PHOTOS[i % BANNER_PHOTOS.length];
 
+
+/* Real coordinates for the Lagos neighbourhoods these shops sit in. The delivery
+   map draws the actual pickup and drop-off, not a decorative line. */
+const AREA_COORDS = {
+  'Lekki Phase 1': [6.4478, 3.4723],
+  'Victoria Island': [6.4281, 3.4219],
+  'Ikoyi': [6.4541, 3.4348],
+  Yaba: [6.5095, 3.3711],
+  Surulere: [6.4969, 3.3481],
+  Ikeja: [6.6018, 3.3515],
+  'Gbagada': [6.5563, 3.3867],
+  Maryland: [6.5719, 3.3670],
+  Ajah: [6.4667, 3.5667],
+  'Magodo': [6.6216, 3.3706],
+};
+const areaCoords = (area) => AREA_COORDS[area] || [6.5244, 3.3792];
+const jitter = (v, seed) => v + ((Math.sin(seed * 12.9898) * 43758.5453) % 1) * 0.008;
+
 const daysAgo = (n, hour = 12) => {
   const d = new Date(Date.now() - n * 864e5);
   d.setHours(hour, 15, 0, 0);
@@ -419,6 +437,9 @@ export async function main({ reset: resetDb = true } = {}) {
       storeLogo(s.name), storeCover(s.name), s.area, 'Lagos', '+2348030000000', 'active', 1,
       s.rating, 40 + storeIdx * 7, 0.12, '08:00', '22:00', 15 + storeIdx, 1000 + storeIdx * 500, daysAgo(60 - storeIdx)
     );
+    const [baseLat, baseLng] = areaCoords(s.area);
+    db.prepare('UPDATE stores SET lat = ?, lng = ? WHERE id = ?')
+      .run(jitter(baseLat, storeIdx + 1), jitter(baseLng, storeIdx + 7), sid);
     storeIdx += 1;
   }
 
@@ -467,7 +488,8 @@ export async function main({ reset: resetDb = true } = {}) {
     db.prepare(
       'INSERT INTO addresses (id,user_id,label,recipient,phone,line1,area,city,lat,lng,notes,is_default,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
     ).run(
-      id, userId, label, null, null, line1, area, 'Lagos', 6.4474, 3.4736,
+      id, userId, label, null, null, line1, area, 'Lagos',
+      jitter(areaCoords(area)[0], line1.length), jitter(areaCoords(area)[1], label.length + 3),
       'Near the blue gate, call on arrival', isDefault, daysAgo(20)
     );
     return id;

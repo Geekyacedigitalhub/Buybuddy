@@ -91,23 +91,23 @@ app as broken.
 
 ---
 
-## 4. Maps — live rider tracking
+## 4. Maps — live rider tracking ✅ already done, for free
 
-| Setting | Value |
-|---|---|
-| `GOOGLE_MAPS_KEY` | Maps JavaScript API key from Google Cloud Console |
+There is nothing to set up here. Tracking uses **OpenStreetMap tiles with Leaflet**, both of which are
+free and need no account, no API key and no card on file. The map on the order screen draws the shop,
+the rider and the customer's address on real Lagos streets, with the route between them.
 
-Optional. Right now the order screen shows progress and the rider's ETA rather than a map tile. With a
-key it draws the live route. The free monthly credit covers early-stage volume.
-
----
+If you later want satellite imagery, traffic, or turn-by-turn directions for riders, *that* is when a
+Google Maps key is worth paying for. Nothing breaks without one.
 
 ## Order to do them in
 
 1. **Paid hosting + domain** — everything else assumes a stable address.
 2. **Paystack** — so a customer who installs from the Play Store can actually pay you.
 3. **Termii** — so a real phone number can sign up.
-4. **Maps** — polish, when you have riders on the road.
+
+That is the whole list. Maps are already live and free; the app, the design, checkout, tracking and the
+merchant dashboard are done.
 
 ## Checking your work
 

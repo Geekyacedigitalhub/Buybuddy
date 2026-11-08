@@ -400,8 +400,15 @@ router.get(
     const address = order.address_json ? JSON.parse(order.address_json) : {};
     // Simulated progressive position; a live deployment streams the rider GPS.
     const progress = { rider_assigned: 0, picked_up: 0.25, in_transit: 0.65, delivered: 1 }[order.status] ?? 0;
-    const from = { lat: 6.5244, lng: 3.3792 };
-    const to = { lat: address.lat || 6.6018, lng: address.lng || 3.3515 };
+    // Real coordinates where we have them: the shop's location, the customer's
+    // saved address, and the rider's live GPS once the rider app reports it.
+    const store = order.store_id ? db.prepare('SELECT id,name,lat,lng FROM stores WHERE id = ?').get(order.store_id) : null;
+    const from = store?.lat
+      ? { lat: store.lat, lng: store.lng }
+      : { lat: 6.4478, lng: 3.4723 };
+    const to = address.lat && address.lng
+      ? { lat: address.lat, lng: address.lng }
+      : { lat: 6.6018, lng: 3.3515 };
     const pos = { lat: from.lat + (to.lat - from.lat) * progress, lng: from.lng + (to.lng - from.lng) * progress };
     res.json({
       active,
@@ -409,7 +416,7 @@ router.get(
       progress,
       rider,
       rider_position: active ? pos : null,
-      pickup: { lat: from.lat, lng: from.lng, label: order.store_id ? db.prepare('SELECT name FROM stores WHERE id = ?').get(order.store_id)?.name : 'Store' },
+      pickup: { lat: from.lat, lng: from.lng, label: store?.name || 'Store' },
       destination: { lat: to.lat, lng: to.lng, label: address.line1 || 'Delivery address' },
       eta_minutes: active ? Math.max(2, Math.round(18 * (1 - progress))) : null,
     });

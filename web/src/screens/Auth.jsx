@@ -204,9 +204,12 @@ export default function AuthScreen() {
           </button>
         </div>
 
-        <p className="tiny muted" style={{ marginTop: 16, lineHeight: 1.6 }}>
+        <p className="tiny muted" style={{ marginTop: 16, lineHeight: 1.7 }}>
           <Icon name="lock" size={12} style={{ verticalAlign: -1 }} /> Payments are processed securely.
-          By continuing you agree to our Terms and Privacy Policy.
+          By continuing you agree to our{' '}
+          <a className="legal-link" href="/legal/terms.html" target="_blank" rel="noopener">Terms</a>{' '}
+          and{' '}
+          <a className="legal-link" href="/legal/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.
         </p>
       </section>
     </div>

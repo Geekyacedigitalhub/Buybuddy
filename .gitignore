@@ -32,3 +32,8 @@ mobile/android/capacitor-cordova-android-plugins/
 
 # local screenshot harness output
 .preview/
+
+# Release signing key — never committed. Back this up somewhere safe.
+mobile/android/keystore.properties
+*.jks
+*.keystore

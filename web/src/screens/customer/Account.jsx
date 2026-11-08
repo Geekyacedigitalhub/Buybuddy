@@ -95,6 +95,16 @@ export function Account() {
         ))}
       </div>
 
+      <div className="card col" style={{ gap: 10 }}>
+        <div className="h3">Legal</div>
+        <a className="row-between legal-row" href="/legal/terms.html" target="_blank" rel="noopener">
+          <span>Terms of Service</span><Icon name="right" size={15} style={{ color: 'var(--ink-3)' }} />
+        </a>
+        <a className="row-between legal-row" href="/legal/privacy.html" target="_blank" rel="noopener">
+          <span>Privacy Policy</span><Icon name="right" size={15} style={{ color: 'var(--ink-3)' }} />
+        </a>
+      </div>
+
       <div className="card">
         <div className="row-between">
           <div>

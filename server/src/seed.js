@@ -29,6 +29,8 @@ const PHOTO = [
   [/tomato/i, 'tomatoes'],
   [/chicken/i, 'chicken'],
   [/spinach|ugu|leafy/i, 'vegetables'],
+  [/small chops|puff puff/i, 'smallchops'],
+  [/suya/i, 'suya'],
   [/bread/i, 'bread'],
   [/semovita|semolina|rice/i, 'rice'],
   // electronics

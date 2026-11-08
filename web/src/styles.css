@@ -743,3 +743,8 @@ html, body { overflow-x: hidden; }
 .mobile-bar .chip { flex: none; }
 .content { min-width: 0; }
 .side { min-width: 0; }
+
+/* legal links — always tappable, never a dead word on the page */
+.legal-link { text-decoration: underline; text-underline-offset: 2px; color: var(--green-700); font-weight: 650; }
+.legal-row { padding: 9px 0; font-size: 14px; font-weight: 600; color: var(--ink-2); border-top: 1px solid #F0F3F0; }
+.legal-row:first-of-type { border-top: none; }

@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   id TEXT PRIMARY KEY, phone TEXT NOT NULL, code TEXT NOT NULL, purpose TEXT NOT NULL,
   expires_at TEXT NOT NULL, consumed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
 );
+/* Every SMS we attempt, whether or not a provider is configured. This is the
+   audit trail support uses when a customer says "I never got my code". */
+CREATE TABLE IF NOT EXISTS sms_log (
+  id TEXT PRIMARY KEY, phone TEXT NOT NULL, body TEXT NOT NULL, provider TEXT NOT NULL,
+  status TEXT NOT NULL, provider_ref TEXT, error TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sms_log_phone ON sms_log(phone, created_at DESC);
 CREATE TABLE IF NOT EXISTS password_resets (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL UNIQUE,
   expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL

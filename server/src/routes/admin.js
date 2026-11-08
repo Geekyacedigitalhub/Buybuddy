@@ -4,7 +4,8 @@ import { requireAuth, requireRole, revokeTokens } from '../lib/auth.js';
 import { asyncHandler, bad, notFound, now, paginate, requireFields, uid, slugify, forbidden } from '../lib/util.js';
 import { notify, event, settingsAll, setSetting, DEFAULT_SETTINGS, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers, settleOrder } from '../lib/orders.js';
-import { refundPayment } from '../lib/payments.js';
+import { refundPayment, paymentModes } from '../lib/payments.js';
+import { smsStatus } from '../lib/sms.js';
 
 const router = Router();
 // Scope the admin guard to /admin/* so this router cannot swallow (and 403)
@@ -576,6 +577,71 @@ router.post(
     );
     audit(req, 'category.create', 'category', id, { name: req.body.name });
     res.status(201).json({ category: db.prepare('SELECT * FROM categories WHERE id = ?').get(id) });
+  })
+);
+
+/* ------------------------------ integrations ----------------------------- */
+/**
+ * One honest view of what is real and what is still simulated. This is the
+ * screen to check the day keys arrive: anything amber here means customers are
+ * seeing a demo behaviour.
+ */
+router.get(
+  '/admin/integrations',
+  asyncHandler(async (_req, res) => {
+    const pay = paymentModes();
+    const sms = smsStatus();
+    const checks = [
+      {
+        key: 'payments',
+        label: 'Card payments',
+        live: pay.paystack,
+        detail: pay.paystack
+          ? 'Paystack keys are set — real cards are being charged.'
+          : 'Running in sandbox. Orders are marked paid without money moving.',
+        fix: 'Set PAYSTACK_SECRET_KEY on the server, then restart.',
+      },
+      {
+        key: 'sms',
+        label: 'Text messages (OTP and order updates)',
+        live: sms.live,
+        detail: sms.live
+          ? `${sms.provider} is configured; ${sms.sent} message(s) delivered, ${sms.failed} failed.`
+          : 'No SMS provider yet — codes only appear in the server log.',
+        fix: 'Set SMS_PROVIDER=termii with TERMII_API_KEY, then restart.',
+      },
+      {
+        key: 'https',
+        label: 'Public HTTPS address',
+        live: /^https:\/\//.test(process.env.APP_URL || ''),
+        detail: process.env.APP_URL || 'APP_URL is not set.',
+        fix: 'Set APP_URL to the public https address of this server.',
+      },
+      {
+        key: 'domain',
+        label: 'Custom domain',
+        live: Boolean(process.env.APP_URL && !/onrender\.com/.test(process.env.APP_URL)),
+        detail: process.env.APP_URL && !/onrender\.com/.test(process.env.APP_URL)
+          ? 'Running on your own domain.'
+          : 'Still on the free hosting address; set APP_URL once a domain is attached.',
+        fix: 'Buy a domain, point it at the host, then set APP_URL.',
+      },
+      {
+        key: 'maps',
+        label: 'Live map tracking',
+        live: Boolean(process.env.GOOGLE_MAPS_KEY),
+        detail: process.env.GOOGLE_MAPS_KEY ? 'Map key present.' : 'Tracking shows progress, not a map tile.',
+        fix: 'Set GOOGLE_MAPS_KEY (free tier is enough to start).',
+      },
+    ];
+    res.json({
+      checks,
+      live_count: checks.filter((c) => c.live).length,
+      total: checks.length,
+      payments: pay,
+      sms,
+      recentSms: db.prepare('SELECT phone,status,provider,error,created_at FROM sms_log ORDER BY created_at DESC LIMIT 12').all(),
+    });
   })
 );
 

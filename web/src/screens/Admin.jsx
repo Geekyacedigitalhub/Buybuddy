@@ -20,6 +20,7 @@ const NAV = [
   { section: 'Platform' },
   { to: '/admin/support', label: 'Support', icon: 'chat' },
   { to: '/admin/settings', label: 'Settings', icon: 'gear' },
+  { to: '/admin/integrations', label: 'Go-live checks', icon: 'check' },
   { to: '/admin/audit', label: 'Audit log', icon: 'filter' },
 ];
 
@@ -35,6 +36,7 @@ export default function AdminApp() {
       <Route path="marketing" element={<Marketing />} />
       <Route path="support" element={<Support />} />
       <Route path="settings" element={<Settings />} />
+      <Route path="integrations" element={<Integrations />} />
       <Route path="audit" element={<Audit />} />
       <Route path="*" element={<Overview />} />
     </Routes>
@@ -850,6 +852,110 @@ function Audit() {
             ))}
           </tbody>
         </table>
+      </div>
+    </Shell>
+  );
+}
+
+/* ------------------------------ integrations ----------------------------- */
+/**
+ * "Go-live checks" — answers the only question that matters before launch:
+ * which parts of BUYBUDDY are actually real, and which are still simulated?
+ */
+function Integrations() {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.get('/api/admin/integrations').then(setData).catch((e) => setErr(e.message));
+  }, []);
+
+  if (err) return <Shell nav={NAV} title="Go-live checks"><Empty title="Could not load" body={err} /></Shell>;
+  if (!data) return <Shell nav={NAV} title="Go-live checks"><Loading /></Shell>;
+
+  const done = data.live_count;
+  const all = data.total;
+
+  return (
+    <Shell
+      nav={NAV}
+      title="Go-live checks"
+      subtitle={`${done} of ${all} integrations live${done === all ? ' — everything is real.' : ' — the rest are still simulated.'}`}
+    >
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="row-between" style={{ marginBottom: 10 }}>
+          <div className="h3">Launch readiness</div>
+          <Badge tone={done === all ? 'badge-ok' : 'badge-warn'}>
+            {Math.round((done / all) * 100)}%
+          </Badge>
+        </div>
+        <div style={{ height: 10, borderRadius: 999, background: 'var(--green-50)', overflow: 'hidden' }}>
+          <div style={{
+            width: `${(done / all) * 100}%`, height: '100%', borderRadius: 999,
+            background: 'linear-gradient(90deg, var(--green-600), var(--green-700))',
+            transition: 'width .4s ease',
+          }} />
+        </div>
+      </div>
+
+      <div className="col" style={{ gap: 10 }}>
+        {data.checks.map((c) => (
+          <div key={c.key} className="card">
+            <div className="row-between" style={{ gap: 12, alignItems: 'flex-start' }}>
+              <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: 10, flex: 'none', display: 'grid', placeItems: 'center',
+                  background: c.live ? 'var(--ok-soft)' : 'var(--warn-soft)',
+                  color: c.live ? 'var(--ok)' : 'var(--warn)',
+                }}>
+                  <Icon name={c.live ? 'check' : 'clock'} size={16} />
+                </div>
+                <div>
+                  <div className="strong" style={{ fontSize: 14 }}>{c.label}</div>
+                  <div className="sub" style={{ marginTop: 3 }}>{c.detail}</div>
+                  {!c.live && <div className="tiny muted" style={{ marginTop: 6 }}>Fix: {c.fix}</div>}
+                </div>
+              </div>
+              <Badge tone={c.live ? 'badge-ok' : 'badge-warn'}>{c.live ? 'Live' : 'Simulated'}</Badge>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {data.recentSms?.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="h3" style={{ marginBottom: 8 }}>Recent text messages</div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>Phone</th><th>Status</th><th>Provider</th><th>When</th></tr>
+              </thead>
+              <tbody>
+                {data.recentSms.map((m, i) => (
+                  <tr key={i}>
+                    <td className="mono">{m.phone}</td>
+                    <td>
+                      <Badge tone={m.status === 'sent' ? 'badge-ok' : m.status === 'failed' ? 'badge-danger' : 'badge-warn'}>
+                        {m.status.replace('_', ' ')}
+                      </Badge>
+                    </td>
+                    <td>{m.provider}</td>
+                    <td className="tiny muted">{timeAgo(m.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: 16, background: 'linear-gradient(120deg, var(--green-50), #fff)' }}>
+        <div className="h3">How to turn each one on</div>
+        <div className="sub" style={{ marginTop: 6, lineHeight: 1.7 }}>
+          These are server settings, not code changes. Add the keys in your hosting dashboard
+          (Render → Environment), restart, and the amber items above turn green.
+          Nothing needs rebuilding — not even the app.
+        </div>
       </div>
     </Shell>
   );

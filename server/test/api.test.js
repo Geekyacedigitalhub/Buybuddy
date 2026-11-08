@@ -81,7 +81,7 @@ test('registers a new customer and enforces OTP + Nigerian phone format', async 
     method: 'POST',
     body: { name: 'Testing User', email: 'newbie@example.com', phone: '08031234567', password: 'Password123!' },
   });
-  assert.equal(res.status, 201);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
   assert.ok(res.body.token);
   assert.equal(res.body.user.phone, '+2348031234567');
   const otp = res.body.verification.dev_code;
@@ -619,4 +619,57 @@ test('PWA: manifest, icons and service worker are served correctly', async () =>
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
   assert.match(html, /apple-touch-icon/);
   assert.match(html, /apple-mobile-web-app-capable/);
+});
+
+/* ---------------------------------------------------------------------------
+ * SMS delivery — the piece that turns "OTP in the log" into a real text message.
+ * ------------------------------------------------------------------------- */
+
+/* Loaded lazily inside each test: a static import here would be hoisted above the
+   DATA_DIR / DB_FILE assignments at the top of this file, and the app modules
+   would open the developer database instead of the throwaway one. */
+const sms = () => import('../src/lib/sms.js');
+
+test('Nigerian phone numbers are normalised to E.164 for the SMS provider', async () => {
+  const { normalisePhone } = await sms();
+  // every shape a Lagos customer might type
+  for (const given of ['08031234567', '8031234567', '+2348031234567', '2348031234567', '0803 123 4567', '0803-123-4567']) {
+    assert.equal(normalisePhone(given), '+2348031234567', `failed for ${given}`);
+  }
+  // all live Nigerian mobile prefixes must survive
+  for (const prefix of ['0703', '0806', '0810', '0902', '0915']) {
+    assert.equal(normalisePhone(`${prefix}1234567`), `+234${prefix.slice(1)}1234567`, `failed for ${prefix}`);
+  }
+  // rubbish is rejected rather than sent to a provider
+  for (const bad of ['', null, '12345', '080312345', '0803123456789', 'not a phone', '+15551234567']) {
+    assert.equal(normalisePhone(bad), null, `should reject ${bad}`);
+  }
+});
+
+test('with no provider configured, sending is honest about it', async () => {
+  const { sendSms, smsConfigured } = await sms();
+  assert.equal(smsConfigured(), false, 'the test environment has no SMS_PROVIDER');
+  const out = await sendSms('08031234567', 'BUYBUDDY test message');
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, 'not_configured');
+  assert.equal(out.phone, '+2348031234567');
+
+  // an invalid number never reaches the provider either
+  const bad = await sendSms('nonsense', 'x');
+  assert.equal(bad.ok, false);
+  assert.equal(bad.reason, 'invalid_phone');
+});
+
+test('OTP signup still works end to end without an SMS provider', async () => {
+  const phone = '+2348039998877';
+  const res = await fetch(base + '/api/auth/otp/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, purpose: 'signup' }),
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.ok(body.sent, 'the request is accepted');
+  // development hands the code back so the flow stays testable without credit
+  assert.ok(body.dev_code || process.env.SMS_PROVIDER, 'a code is either returned or texted');
 });

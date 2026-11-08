@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { sendSmsInBackground } from './sms.js';
 import { settingsAll, notify, event, walletEntry } from './settings.js';
 import { awardLoyalty, rewardReferralIfEligible } from './growth.js';
 import { bad, forbidden, money, now, uid, clamp, fakePin } from './util.js';
@@ -142,9 +143,27 @@ export function transition(orderId, next, { actor = null, actorRole = 'system', 
   return db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
 }
 
+const SMS_MOMENTS = {
+  in_transit: (o) => `BUYBUDDY: ${o.code} is on its way. Your rider will call when they arrive. Give them the delivery code only when you have the order.`,
+  delivered: (o) => `BUYBUDDY: ${o.code} has been delivered. Thanks for shopping with us — rate your rider in the app.`,
+  awaiting_approval: (o) => `BUYBUDDY: your personal shopper has priced ${o.code}. Open the app to approve or reject before anything is charged.`,
+  cancelled: (o) => `BUYBUDDY: ${o.code} was cancelled. If you were charged, a refund is on its way.`,
+};
+
 function notifyParties(order, next, note) {
   const label = orderLabel(next);
   const short = `Order ${order.code}`;
+
+  /* A push notification only helps if the app is open. Money and the doorbell
+     are worth a text message. */
+  if (SMS_MOMENTS[next]) {
+    try {
+      const customer = db.prepare('SELECT phone FROM users WHERE id = ?').get(order.customer_id);
+      if (customer?.phone) sendSmsInBackground(customer.phone, SMS_MOMENTS[next](order));
+    } catch (e) {
+      console.warn('[orders] sms notify failed:', e.message);
+    }
+  }
   if (['accepted', 'preparing', 'ready_for_pickup'].includes(next)) {
     notify(order.customer_id, { title: `${short}: ${label}`, body: note || 'Your order is being handled by the store.', kind: 'order', orderId: order.id });
   }

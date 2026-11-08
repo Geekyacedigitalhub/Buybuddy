@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   id text PRIMARY KEY, phone text NOT NULL, code text NOT NULL, purpose text NOT NULL,
   expires_at text NOT NULL, consumed integer NOT NULL DEFAULT 0, created_at text NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sms_log (
+  id text PRIMARY KEY, phone text NOT NULL, body text NOT NULL, provider text NOT NULL,
+  status text NOT NULL, provider_ref text, error text, created_at text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sms_log_phone ON sms_log(phone, created_at DESC);
 CREATE TABLE IF NOT EXISTS password_resets (
   id text PRIMARY KEY, user_id text NOT NULL, token text NOT NULL UNIQUE,
   expires_at text NOT NULL, used integer NOT NULL DEFAULT 0, created_at text NOT NULL

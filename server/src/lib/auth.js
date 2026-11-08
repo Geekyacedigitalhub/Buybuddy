@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from './db.js';
+import { sendSmsInBackground } from './sms.js';
 import { bad, forbidden, now, uid, unauth } from './util.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-me';
@@ -84,10 +85,8 @@ export function createOtp(phone, purpose = 'signup') {
     `INSERT INTO otp_codes (id, phone, code, purpose, expires_at, created_at)
      VALUES (?,?,?,?,?,?)`
   ).run(uid('otp'), phone, code, purpose, new Date(Date.now() + 10 * 60_000).toISOString(), now());
-  if (process.env.SMS_PROVIDER) {
-    // integration point: await sms.send(phone, `Your BUYBUDDY code is ${code}`)
-    console.log(`[sms] ${phone} -> BUYBUDDY code ${code}`);
-  }
+  // Delivered in the background: a slow network must never block a signup.
+  sendSmsInBackground(phone, `${code} is your BUYBUDDY verification code. It expires in 10 minutes. Never share it.`);
   return code;
 }
 

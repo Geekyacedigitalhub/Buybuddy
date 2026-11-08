@@ -182,6 +182,15 @@ export function validateEnv() {
     }
     if (!process.env.SMS_PROVIDER) {
       warnings.push('SMS_PROVIDER is not set — OTP codes will only be written to logs.');
+    } else if (!['termii', 'twilio'].includes(process.env.SMS_PROVIDER.toLowerCase())) {
+      problems.push(`SMS_PROVIDER "${process.env.SMS_PROVIDER}" is not supported — use "termii" or "twilio".`);
+    } else if (process.env.SMS_PROVIDER.toLowerCase() === 'termii' && !process.env.TERMII_API_KEY) {
+      problems.push('SMS_PROVIDER=termii but TERMII_API_KEY is missing — no code would ever arrive.');
+    } else if (
+      process.env.SMS_PROVIDER.toLowerCase() === 'twilio'
+      && !(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_FROM || process.env.TWILIO_MESSAGING_SERVICE_SID))
+    ) {
+      problems.push('SMS_PROVIDER=twilio but TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM are incomplete.');
     }
   } else if (!process.env.JWT_SECRET) {
     warnings.push('JWT_SECRET not set; using an insecure development default.');

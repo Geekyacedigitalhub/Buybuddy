@@ -822,3 +822,35 @@ test('rider GPS reaches the customer map, and only from the assigned rider', asy
   const late = await api(POST, { method: 'POST', token: rider, body: { lat: 6.45, lng: 3.46 } });
   assert.equal(late.status, 400, 'reporting stops when the delivery ends');
 });
+
+test('webhook: signatures are checked, and both webhook paths exist', async () => {
+  const crypto = await import('node:crypto');
+  const { handlePaystackWebhook } = await import('../src/lib/payments.js');
+  const secret = process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_WEBHOOK_SECRET || '';
+
+  const body = JSON.stringify({ event: 'charge.success', data: { reference: 'ref_that_does_not_exist', amount: 10000 } });
+  const sign = (k) => crypto.createHmac('sha512', k).update(body).digest('hex');
+
+  if (secret) {
+    // our own signature is accepted (the reference is unknown, so nothing is granted)
+    assert.equal(handlePaystackWebhook(body, sign(secret)).ok, true);
+    // a tampered body, a guessed key, or no signature at all are refused
+    assert.throws(() => handlePaystackWebhook(body.replace('10000', '1'), sign(secret)), /signature/i);
+    assert.throws(() => handlePaystackWebhook(body, sign('wrong-secret')), /signature/i);
+    assert.throws(() => handlePaystackWebhook(body, ''), /signature/i);
+  } else {
+    // with no keys configured the server says so instead of silently accepting
+    assert.throws(() => handlePaystackWebhook(body, 'anything'), /not configured/i);
+  }
+
+  // both webhook paths exist, because the URL pasted into a dashboard is a
+  // detail people get wrong and there is no reason for it to cost a payment
+  for (const path of ['/api/webhooks/paystack', '/api/payments/paystack/webhook']) {
+    const res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-paystack-signature': 'nope' },
+      body,
+    });
+    assert.equal(res.status, 400, `${path} must exist and reject a bad signature`);
+  }
+});

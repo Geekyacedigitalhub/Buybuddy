@@ -46,14 +46,18 @@ export function createApp() {
   app.use('/api/dev/payments', rateLimit(limiterPresets.payment));
 
   /* The raw body is required to validate Paystack's HMAC signature. */
-  app.post('/api/webhooks/paystack', express.raw({ type: '*/*', limit: '2mb' }), (req, res) => {
+  const paystackWebhook = (req, res) => {
     try {
       const result = handlePaystackWebhook(req.body.toString('utf8'), req.header('x-paystack-signature'));
       res.json({ received: true, ...result });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
-  });
+  };
+  app.post('/api/webhooks/paystack', express.raw({ type: '*/*', limit: '2mb' }), paystackWebhook);
+  /* Same handler under the path Paystack's own docs suggest, so whichever URL
+   * ends up pasted into the dashboard works. */
+  app.post('/api/payments/paystack/webhook', express.raw({ type: '*/*', limit: '2mb' }), paystackWebhook);
 
   app.use(express.json({ limit: '6mb' }));
   app.use(express.urlencoded({ extended: true }));

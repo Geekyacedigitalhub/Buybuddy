@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { db } from './db.js';
 import { settingsAll, notify, event, walletEntry, walletBalance } from './settings.js';
 import { bad, hmacSha512, money, now, uid } from './util.js';
@@ -5,6 +6,7 @@ import { offerJob, transition } from './orders.js';
 
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
 const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || '';
+const PAYSTACK_WEBHOOK_SECRET = process.env.PAYSTACK_WEBHOOK_SECRET || '';
 const MOCK = !PAYSTACK_SECRET || process.env.PAYSTACK_MOCK === 'true';
 const APP_URL = process.env.APP_URL || 'http://localhost:4000';
 
@@ -148,9 +150,23 @@ export function markOrderPaid(orderId, { provider, reference: ref, amount }) {
 
 /** Paystack webhook: signature validated, then processing is idempotent. */
 export function handlePaystackWebhook(rawBody, signature) {
-  if (!PAYSTACK_SECRET) throw bad('Webhook not configured');
-  const expected = hmacSha512(PAYSTACK_SECRET, rawBody);
-  if (!signature || expected !== signature) throw bad('Invalid webhook signature');
+  if (!PAYSTACK_SECRET && !PAYSTACK_WEBHOOK_SECRET) throw bad('Webhook not configured');
+
+  /**
+   * Paystack signs with HMAC-SHA512 over the raw body. Which secret it keys with
+   * depends on the account: the classic secret key, or the newer webhook signing
+   * secret (whsec_…) shown in the dashboard. Accept either — a mismatch here
+   * means every real payment arrives and is thrown away — and compare in
+   * constant time so the check cannot be probed a byte at a time.
+   */
+  const secrets = [PAYSTACK_WEBHOOK_SECRET, PAYSTACK_SECRET].filter(Boolean);
+  const valid = Boolean(signature) && secrets.some((secret) => {
+    const expected = hmacSha512(secret, rawBody);
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(String(signature), 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
+  if (!valid) throw bad('Invalid webhook signature');
   const payload = JSON.parse(rawBody);
   const ref = payload?.data?.reference;
   if (!ref) return { ok: true, ignored: true };

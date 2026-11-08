@@ -13,13 +13,22 @@ You can watch the count go up at **Admin → Go-live checks** in the web app.
 | Setting | Value |
 |---|---|
 | `PAYSTACK_SECRET_KEY` | `sk_live_…` from your Paystack dashboard |
+| `PAYSTACK_WEBHOOK_SECRET` | `whsec_…` (optional — the webhook signing secret, if your dashboard shows one) |
 
-Get it at **dashboard.paystack.com → Settings → API Keys & Webhooks**. Use the **live** secret key, not
-the test one. Then set the webhook URL to:
+Get them at **dashboard.paystack.com → Developers → API configuration** (live mode). Use the **live**
+keys, not the test ones. Then, on the same screen:
 
-```
-https://<your-domain>/api/payments/paystack/webhook
-```
+| Paystack field | Value |
+|---|---|
+| Live webhook URL | `https://<your-domain>/api/webhooks/paystack` |
+| Live callback URL | `https://<your-domain>/#/payment/return` |
+
+`/api/payments/paystack/webhook` works identically if an old note sends you there — the same handler is
+mounted on both paths. Webhooks are HMAC-SHA512 over the raw body; the server accepts a signature made
+with either the secret key or the webhook signing secret.
+
+**Leave IP whitelisting off.** Your server's outbound address changes; whitelisting it locks you out of
+your own API. The signature check is what actually protects the webhook.
 
 Paystack charges roughly **1.5% + ₦100** per transaction above ₦2,500 (capped at ₦2,000). Money settles
 to your bank account on Paystack's schedule.

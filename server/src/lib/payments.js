@@ -168,19 +168,58 @@ export function handlePaystackWebhook(rawBody, signature) {
   return { ok: true, ignored: true };
 }
 
-export function refundPayment(orderId, { amount, reason, actor }) {
+/**
+ * Refunds. Two very different situations hide behind one word:
+ *
+ *  - the money never left BUYBUDDY (wallet payments), so crediting the wallet back
+ *    is the whole job;
+ *  - a card was charged, and the money is sitting in the Paystack balance. Then
+ *    saying "refunded" in our database while nothing moves is a lie the customer
+ *    finds out about days later. So the refund is sent to Paystack first, and if
+ *    Paystack refuses, the admin sees the reason and nothing is marked refunded.
+ */
+export async function refundPayment(orderId, { amount, reason, actor }) {
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!order) throw bad('Order not found');
   if (!['paid', 'paid_cash'].includes(order.payment_status)) throw bad('This order has no captured payment to refund.');
   const amt = money(amount || order.total);
   const payment = db.prepare("SELECT * FROM payments WHERE order_id = ? AND status = 'success' ORDER BY created_at DESC LIMIT 1").get(orderId);
-  if (payment) db.prepare("UPDATE payments SET status = 'refunded' WHERE id = ?").run(payment.id);
+
+  let refundNote = null;
+  if (payment?.provider === 'paystack' && !MOCK) {
+    const res = await fetch('https://api.paystack.co/refund', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${PAYSTACK_SECRET}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transaction: payment.reference,
+        amount: Math.min(amt, payment.amount) * 100, // kobo, never more than was captured
+        merchant_note: `BUYBUDDY refund ${order.code}: ${reason || 'no reason given'}`,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.status) {
+      throw bad(json?.message || 'Paystack refused the refund — check the transaction in your Paystack dashboard.');
+    }
+    refundNote = { refund_status: json.data?.status || 'pending', refund_id: json.data?.id || null };
+  }
+
+  if (payment) {
+    db.prepare("UPDATE payments SET status = 'refunded', provider_payload = ? WHERE id = ?").run(
+      JSON.stringify({ ...refundNote, refunded_amount: amt }).slice(0, 4000),
+      payment.id
+    );
+  }
   db.prepare("UPDATE orders SET payment_status = 'refunded', updated_at = ? WHERE id = ?").run(now(), orderId);
   if (order.payment_method === 'wallet' || payment?.provider === 'wallet') {
     walletEntry(order.customer_id, { type: 'credit', amount: amt, orderId, description: `Refund — ${order.code}` });
   }
   db.prepare("UPDATE orders SET status = 'refunded', completed_at = ?, updated_at = ? WHERE id = ?").run(now(), now(), orderId);
-  event(orderId, { actorId: actor?.id, actorRole: 'admin', type: 'refunded', message: `Refund of ₦${amt.toLocaleString()} issued — ${reason || 'no reason given'}` });
+  const where = payment?.provider === 'paystack' && !MOCK ? 'back to the customer\'s card via Paystack' : 'to the BUYBUDDY wallet';
+  event(orderId, {
+    actorId: actor?.id, actorRole: 'admin', type: 'refunded',
+    message: `Refund of ₦${amt.toLocaleString()} issued ${where} — ${reason || 'no reason given'}`,
+    meta: refundNote || undefined,
+  });
   notify(order.customer_id, { title: `Refund issued — ${order.code}`, body: `₦${amt.toLocaleString()} has been refunded. ${reason || ''}`, kind: 'payment', orderId });
   return { refunded: amt };
 }

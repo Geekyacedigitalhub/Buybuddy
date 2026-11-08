@@ -175,7 +175,8 @@ router.post(
 router.post(
   '/admin/orders/:id/refund',
   asyncHandler(async (req, res) => {
-    const result = refundPayment(req.params.id, {
+    // async: a card refund is sent to Paystack before anything is marked refunded
+    const result = await refundPayment(req.params.id, {
       amount: req.body?.amount,
       reason: req.body?.reason,
       actor: req.user,

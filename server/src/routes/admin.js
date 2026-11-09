@@ -6,6 +6,7 @@ import { notify, event, settingsAll, setSetting, DEFAULT_SETTINGS, walletBalance
 import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers, settleOrder } from '../lib/orders.js';
 import { refundPayment, paymentModes, paystackReachability } from '../lib/payments.js';
 import { smsStatus } from '../lib/sms.js';
+import { dumpDatabase, restoreDatabase, tableOrder } from '../lib/backup.js';
 
 const router = Router();
 // Scope the admin guard to /admin/* so this router cannot swallow (and 403)
@@ -647,6 +648,45 @@ router.get(
       sms,
       recentSms: db.prepare('SELECT phone,status,provider,error,created_at FROM sms_log ORDER BY created_at DESC LIMIT 12').all(),
     });
+  })
+);
+
+/* --------------------------- backup and restore --------------------------- */
+
+/*
+ * A free host keeps no disk: every deploy starts from an empty container. That
+ * makes a portable, human-readable backup the difference between "we lost the
+ * day" and "we restored in a minute". Admin-only, and the dump carries password
+ * hashes, so it is never exposed to any other role.
+ */
+router.get(
+  '/admin/backup',
+  asyncHandler(async (req, res) => {
+    const dump = dumpDatabase();
+    audit(req, 'backup.download', 'database', null, { rows: Object.values(dump.counts).reduce((a, b) => a + b, 0) });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="buybuddy-backup-${stamp}.json"`);
+    res.send(JSON.stringify(dump, null, 1));
+  })
+);
+
+router.post(
+  '/admin/restore',
+  asyncHandler(async (req, res) => {
+    const confirm = String(req.body?.confirm || '');
+    if (confirm !== 'REPLACE ALL DATA') throw bad('Type REPLACE ALL DATA to confirm a restore.');
+    const dump = req.body?.backup;
+    if (!dump) throw bad('No backup supplied.');
+    let result;
+    try {
+      result = restoreDatabase(typeof dump === 'string' ? JSON.parse(dump) : dump);
+    } catch (e) {
+      // a wrong file is the customer's mistake, not a server fault
+      throw bad(e.message);
+    }
+    audit(req, 'backup.restore', 'database', null, result.restored);
+    res.json({ restored: true, ...result, tables: tableOrder().length });
   })
 );
 

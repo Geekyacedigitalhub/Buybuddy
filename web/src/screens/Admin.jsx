@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
-import { api, naira, nairaShort, pretty, timeAgo, assetUrl } from '../lib/api.js';
+import { api, naira, nairaShort, pretty, timeAgo, assetUrl, downloadFile } from '../lib/api.js';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, StatusBadge,
   Textarea, useToast,
@@ -824,7 +824,68 @@ function Settings() {
           <Button onClick={save} disabled={busy} size="lg">{busy ? 'Saving…' : 'Save settings'}</Button>
         </div>
       </div>
+      <div style={{ marginTop: 16 }}>
+        <DataBackup />
+      </div>
     </Shell>
+  );
+}
+
+/*
+ * A backup you cannot take is not a backup. This is the whole database as one
+ * file, and it is the only thing standing between a free host's wipe-on-deploy
+ * and losing a real day of orders.
+ */
+function DataBackup() {
+  const [busy, setBusy] = useState(false);
+  const [file, setFile] = useState(null);
+  const [confirm, setConfirm] = useState('');
+  const toast = useToast();
+
+  const download = async () => {
+    setBusy(true);
+    try {
+      const blob = await downloadFile('/api/admin/backup');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `buybuddy-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success('Backup downloaded — keep it somewhere safe');
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  const restore = async () => {
+    if (!file) return toast.error('Choose a backup file first.');
+    setBusy(true);
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      const r = await api.post('/api/admin/restore', { backup, confirm });
+      toast.success(`Restored ${Object.values(r.restored || {}).reduce((a, b) => a + b, 0)} rows`);
+      setTimeout(() => window.location.reload(), 900);
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card col" style={{ gap: 10 }}>
+      <div className="h3">Data &amp; backup</div>
+      <p className="sub" style={{ margin: 0 }}>
+        Everything in BUYBUDDY lives in one database. Download it before a deploy, and you can always put it back.
+      </p>
+      <div className="row" style={{ gap: 8 }}>
+        <Button onClick={download} disabled={busy}>Download backup</Button>
+      </div>
+      <div className="divider" />
+      <div className="tiny muted">Restore replaces every order, user and product with the contents of the file.</div>
+      <input type="file" accept=".json,application/json" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      <Field label="Type REPLACE ALL DATA to confirm">
+        <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="REPLACE ALL DATA" />
+      </Field>
+      <Button variant="danger" onClick={restore} disabled={busy || !file || confirm !== 'REPLACE ALL DATA'}>
+        {busy ? 'Working…' : 'Restore from file'}
+      </Button>
+    </div>
   );
 }
 

@@ -933,3 +933,43 @@ test('the cart says exactly how much more is needed to reach a store minimum', a
   const after = await api('/api/cart', { token });
   assert.ok(!after.body.issues.some((i) => i.type === 'min_order'), 'adding items clears the minimum-order issue');
 });
+
+test('backup and restore: the whole database survives a wipe', async () => {
+  const token = await login('admin@buybuddy.ng');
+
+  const before = await api('/api/orders', { token });
+  const ordersBefore = before.body.orders.length;
+
+  const { db } = await import('../src/lib/db.js');
+  const backup = await api('/api/admin/backup', { token });
+  assert.equal(backup.status, 200);
+  const dump = backup.body;
+  assert.equal(dump.app, 'buybuddy');
+  assert.ok(dump.tables.users.length > 0, 'the dump contains users');
+  assert.ok(dump.tables.orders.length >= ordersBefore);
+  assert.ok(dump.tables.payments.length > 0, 'payments are in the dump too');
+  assert.ok(dump.tables.settings.length > 0, 'settings ride along');
+
+  // destroy a row, then put the backup back
+  const victim = dump.tables.users.find((u) => u.role === 'customer');
+  db.prepare("UPDATE users SET name = 'WIPED' WHERE id = ?").run(victim.id);
+
+  const restored = await api('/api/admin/restore', {
+    method: 'POST',
+    token,
+    body: { backup: dump, confirm: 'REPLACE ALL DATA' },
+  });
+  assert.equal(restored.status, 200, JSON.stringify(restored.body));
+  assert.equal(restored.body.broken_foreign_keys, 0);
+  assert.equal(restored.body.row_error_count, 0, JSON.stringify(restored.body.row_errors));
+
+  const after = db.prepare('SELECT name FROM users WHERE id = ?').get(victim.id);
+  assert.equal(after.name, victim.name, 'the wiped row came back');
+
+  const ordersAfter = (await api('/api/orders', { token })).body.orders.length;
+  assert.equal(ordersAfter, ordersBefore, 'every order is still there');
+
+  // and a bad file is refused rather than half-applied
+  const rejected = await api('/api/admin/restore', { method: 'POST', token, body: { backup: { nope: true }, confirm: 'REPLACE ALL DATA' } });
+  assert.equal(rejected.status, 400);
+});

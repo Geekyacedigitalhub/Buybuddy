@@ -98,6 +98,22 @@ async function request(path, { method = 'GET', body, headers = {}, raw = false }
   return data;
 }
 
+/**
+ * Fetches a file (a backup, an export) with the same auth as every other call.
+ * The ordinary request() helper parses JSON, which would mangle a download.
+ */
+export const downloadFile = async (path) => {
+  const res = await fetch(BASE() + path, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`;
+    try { message = (await res.json()).error || message; } catch { /* not JSON */ }
+    throw new ApiError(message, res.status);
+  }
+  return res.blob();
+};
+
 export const api = {
   get: (p, opts) => request(p, opts),
   post: (p, body, opts) => request(p, { ...opts, method: 'POST', body }),
@@ -159,4 +175,13 @@ export const toDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-export const fmtAddress = (a) => (a ? [a.line1, a.area, a.city].filter(Boolean).join(', ') : '');
+export const fmtAddress = (a) => {
+  if (!a) return '';
+  // 'Lekki Phase 1, Lekki Phase 1, Lagos' — the area is often also the city
+  const parts = [];
+  for (const part of [a.line1, a.area, a.city]) {
+    const value = (part || '').trim();
+    if (value && !parts.some((p) => p.toLowerCase() === value.toLowerCase())) parts.push(value);
+  }
+  return parts.join(', ');
+};

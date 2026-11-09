@@ -60,6 +60,9 @@ export function createApp() {
   app.post('/api/payments/paystack/webhook', express.raw({ type: '*/*', limit: '2mb' }), paystackWebhook);
 
   app.use(express.json({ limit: '6mb' }));
+  // a database restore travels as JSON in the body; it is bigger than any
+  // ordinary request, and it is the only route that needs the room
+  app.use('/api/admin/restore', express.json({ limit: '40mb' }));
   app.use(express.urlencoded({ extended: true }));
 
   /* Readiness probe: distinguishes "process is up" from "can serve traffic". */

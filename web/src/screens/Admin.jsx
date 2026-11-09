@@ -878,7 +878,15 @@ function DataBackup() {
       </div>
       <div className="divider" />
       <div className="tiny muted">Restore replaces every order, user and product with the contents of the file.</div>
-      <input type="file" accept=".json,application/json" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      <label className="btn btn-ghost" style={{ cursor: 'pointer', alignSelf: 'flex-start' }}>
+        <Icon name="box" size={14} /> {file ? file.name : 'Choose backup file'}
+        <input
+          type="file"
+          accept=".json,application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+        />
+      </label>
       <Field label="Type REPLACE ALL DATA to confirm">
         <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="REPLACE ALL DATA" />
       </Field>

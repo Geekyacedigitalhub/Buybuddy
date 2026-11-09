@@ -159,3 +159,30 @@ to set, and it lists recent SMS deliveries. When all five are green, BUYBUDDY is
   number is not Nigerian. Check `sms_log` for a `failed` row with the provider's reason.
 - **"Invalid environment" on boot** → the service refuses to start rather than run half-configured. The
   log names the exact variable that is missing.
+
+## Backups, and the one thing that will bite you first
+
+The free Render plan keeps **no disk**. Every deploy, restart or 15-minute idle
+wake-up starts a fresh container, and the database begins again from seed data.
+Demo orders coming back is harmless. A real customer's paid order disappearing
+is not.
+
+**What we added so data can leave the building**
+
+- **Admin → Settings → Data & backup → Download backup** saves the entire
+  database (every order, user, product, payment) as one JSON file.
+- **Restore from file** puts it back in a single transaction. Type
+  `REPLACE ALL DATA` to confirm. It reports broken foreign keys instead of
+  pretending everything worked.
+- Table order is worked out from the schema's own foreign keys, so a new table
+  can never quietly fall out of a backup.
+
+**The habit that keeps you safe on the free plan**
+
+1. Before any deploy, open Admin → Settings → Download backup.
+2. Deploy.
+3. After the deploy, restore that file (or ask for it to be restored).
+
+The paid fix, when you are ready: Render **Starter $7/month** plus a **1 GB
+persistent disk ($0.25/month)** mounted at `/var/data`, with `DATA_DIR` set to
+`/var/data`. Then the database simply stays put and none of the above is needed.

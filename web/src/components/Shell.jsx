@@ -88,7 +88,9 @@ export const Bars = ({ data, valueKey = 'gmv', labelKey = 'day', format = (v) =>
     <div className="bars">
       {data.map((d) => (
         <div key={d[labelKey]} className="bar-col" title={`${d[labelKey]}: ${format(d[valueKey])}`}>
-          <div className="bar" style={{ height: `${Math.max(4, (d[valueKey] / max) * 100)}%` }} />
+          <div className="bar-track">
+            <div className="bar" style={{ height: `${d[valueKey] > 0 ? Math.max(6, (d[valueKey] / max) * 100) : 0}%` }} />
+          </div>
           <span className="tiny muted">{String(d[labelKey]).slice(-2)}</span>
         </div>
       ))}

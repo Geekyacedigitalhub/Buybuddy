@@ -13,6 +13,7 @@ const NAV = [
   { to: '/admin/orders', label: 'Orders', icon: 'receipt' },
   { to: '/admin/people', label: 'Customers & people', icon: 'user' },
   { to: '/admin/merchants', label: 'Merchants', icon: 'shop' },
+  { to: '/admin/products', label: 'Listings', icon: 'box' },
   { to: '/admin/workers', label: 'Shoppers & riders', icon: 'bike' },
   { section: 'Money' },
   { to: '/admin/finance', label: 'Finance & payouts', icon: 'wallet' },
@@ -31,6 +32,7 @@ export default function AdminApp() {
       <Route path="orders" element={<Orders />} />
       <Route path="people" element={<People />} />
       <Route path="merchants" element={<Merchants />} />
+      <Route path="products" element={<Listings />} />
       <Route path="workers" element={<Workers />} />
       <Route path="finance" element={<Finance />} />
       <Route path="marketing" element={<Marketing />} />
@@ -359,6 +361,78 @@ function People() {
           </div>
         )}
       </Modal>
+    </Shell>
+  );
+}
+
+/* -------------------------------- listings -------------------------------- */
+
+function Listings() {
+  const [data, setData] = useState(null);
+  const [filters, setFilters] = useState({ q: '', status: '' });
+  const toast = useToast();
+
+  const load = () => {
+    const p = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => v && p.set(k, v));
+    p.set('limit', '60');
+    api.get(`/api/admin/products?${p}`).then(setData).catch(() => setData({ products: [], total: 0 }));
+  };
+  useEffect(() => { load(); }, [filters]);
+
+  const moderate = async (product, status) => {
+    const reason = status === 'inactive'
+      ? prompt(`Why is "${product.name}" coming down? The store owner sees this.`, 'Photo or description does not match the product')
+      : undefined;
+    if (status === 'inactive' && reason === null) return;
+    try {
+      await api.patch(`/api/admin/products/${product.id}`, { status, reason });
+      toast.success(status === 'active' ? 'Listing is back on the marketplace' : 'Listing hidden');
+      load();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  return (
+    <Shell nav={NAV} title="Listings" subtitle="Every product on the marketplace — take a bad one down without freezing the whole shop">
+      <div className="row wrap" style={{ gap: 8, marginBottom: 14 }}>
+        <Input value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder="Product or store name…" style={{ maxWidth: 280 }} />
+        <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} style={{ maxWidth: 190 }}>
+          <option value="">Everything</option>
+          <option value="active">On the marketplace</option>
+          <option value="inactive">Hidden</option>
+        </Select>
+        <div className="spacer" /><span className="sub">{data?.total ?? 0} listings</span>
+      </div>
+      {!data ? <Loading /> : data.products.length === 0 ? (
+        <Empty icon="box" title="No listings match" body="Try a different name, or clear the filter." />
+      ) : (
+        <div className="card card-flush table-wrap">
+          <table className="table">
+            <thead><tr><th>Product</th><th>Store</th><th>Price</th><th>Stock</th><th>Status</th><th /></tr></thead>
+            <tbody>
+              {data.products.map((p) => (
+                <tr key={p.id}>
+                  <td>
+                    <div className="row" style={{ gap: 8 }}>
+                      {p.image && <img src={assetUrl(p.image)} alt="" style={{ width: 30, height: 30, borderRadius: 8, objectFit: 'cover' }} />}
+                      <span className="strong" style={{ fontSize: 13 }}>{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="sub">{p.store_name}<div className="tiny muted">{p.owner_name}</div></td>
+                  <td className="mono">{naira(p.price)}</td>
+                  <td className="mono">{p.stock}</td>
+                  <td><Badge tone={p.status === 'active' ? 'badge-ok' : 'badge-warn'}>{p.status === 'active' ? 'live' : 'hidden'}</Badge></td>
+                  <td>
+                    {p.status === 'active'
+                      ? <Button size="sm" variant="danger" onClick={() => moderate(p, 'inactive')}>Take down</Button>
+                      : <Button size="sm" variant="ghost" onClick={() => moderate(p, 'active')}>Put back</Button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Shell>
   );
 }

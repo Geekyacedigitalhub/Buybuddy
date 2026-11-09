@@ -1215,3 +1215,42 @@ test('37. wallet money only appears after it has been paid for', async () => {
   assert.equal((await api('/api/wallet', { token })).body.balance, beforeReal + 7000, 'and adds nothing');
   assert.ok((await api('/api/wallet', { token })).body.balance > before);
 });
+
+test('38. admin can pull one bad listing without freezing the whole shop', async () => {
+  const admin = await login('admin@buybuddy.ng');
+  const list = await api('/api/admin/products?limit=5', { token: admin });
+  assert.equal(list.status, 200, JSON.stringify(list.body));
+  assert.ok(list.body.products.length > 0, 'the marketplace has listings to moderate');
+  const first = list.body.products[0];
+  assert.ok(first.store_name && first.owner_name, 'the admin can see whose listing it is');
+
+  const search = await api(`/api/admin/products?q=${encodeURIComponent(first.store_name.slice(0, 4))}`, { token: admin });
+  assert.equal(search.status, 200);
+  assert.ok(search.body.products.some((p) => p.id === first.id), 'search finds it by store name');
+
+  const down = await api(`/api/admin/products/${first.id}`, {
+    method: 'PATCH', token: admin, body: { status: 'inactive', reason: 'Photo does not match the product' },
+  });
+  assert.equal(down.status, 200, JSON.stringify(down.body));
+  assert.equal(down.body.product.status, 'inactive');
+
+  const hiddenFilter = await api('/api/admin/products?status=inactive&limit=50', { token: admin });
+  assert.ok(hiddenFilter.body.products.some((p) => p.id === first.id), 'it moves into the hidden filter');
+
+  const shop = await api(`/api/products?store=${first.store_id}&limit=200`);
+  assert.ok(!shop.body.products.some((p) => p.id === first.id), 'shoppers can no longer see it');
+
+  const { db } = await import('../src/lib/db.js');
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(first.store_id);
+  const note = db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(store.merchant_id);
+  assert.match(note.body, /took this listing down/i, 'the store owner is told why');
+
+  const back = await api(`/api/admin/products/${first.id}`, { method: 'PATCH', token: admin, body: { status: 'active' } });
+  assert.equal(back.body.product.status, 'active', 'and it can be put back');
+  const visible = await api(`/api/products?store=${first.store_id}&limit=200`);
+  assert.ok(visible.body.products.some((p) => p.id === first.id));
+
+  const customers = await login('customer@buybuddy.ng');
+  const refused = await api(`/api/admin/products/${first.id}`, { method: 'PATCH', token: customers, body: { status: 'inactive' } });
+  assert.ok([401, 403].includes(refused.status), 'only admins moderate');
+});

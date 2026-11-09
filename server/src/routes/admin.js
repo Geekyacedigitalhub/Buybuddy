@@ -288,6 +288,63 @@ router.post(
   })
 );
 
+/* -------------------------------- products -------------------------------- */
+
+/**
+ * Moderation. A merchant can list anything, and until now the only lever was to
+ * suspend the whole store — which punishes a shop with 200 good products because
+ * of one bad one. Admin can now hide a single product, say why, and the merchant
+ * is told in their notifications. Nothing is deleted: the row stays for the
+ * audit trail and can be put back.
+ */
+router.get(
+  '/admin/products',
+  asyncHandler(async (req, res) => {
+    const { limit, offset } = paginate(req, 40);
+    const where = [];
+    const params = {};
+    if (req.query.q) { where.push('(p.name LIKE @q OR s.name LIKE @q)'); params.q = `%${req.query.q}%`; }
+    if (req.query.store_id) { where.push('p.store_id = @store_id'); params.store_id = req.query.store_id; }
+    if (req.query.status) { where.push('p.status = @status'); params.status = req.query.status; }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const rows = db
+      .prepare(
+        `SELECT p.*, s.name AS store_name, s.status AS store_status, u.name AS owner_name, u.email AS owner_email
+         FROM products p JOIN stores s ON s.id = p.store_id JOIN users u ON u.id = s.merchant_id
+         ${clause} ORDER BY p.created_at DESC LIMIT @limit OFFSET @offset`
+      )
+      .all({ ...params, limit, offset });
+    const total = db
+      .prepare(`SELECT COUNT(*) c FROM products p JOIN stores s ON s.id = p.store_id ${clause}`)
+      .get(params).c;
+    res.json({ products: rows, total, limit, offset });
+  })
+);
+
+router.patch(
+  '/admin/products/:id',
+  asyncHandler(async (req, res) => {
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
+    if (!product) throw notFound('Product not found');
+    const status = req.body?.status;
+    if (!['active', 'inactive'].includes(status)) throw bad('Choose active or inactive.');
+    const reason = String(req.body?.reason || '').slice(0, 300);
+    db.prepare('UPDATE products SET status = ? WHERE id = ?').run(status, product.id);
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(product.store_id);
+    audit(req, 'product.moderate', 'product', product.id, { status, reason, store_id: product.store_id });
+    if (store) {
+      notify(store.merchant_id, {
+        title: status === 'active' ? `Listing restored: ${product.name}` : `Listing hidden: ${product.name}`,
+        body: status === 'active'
+          ? 'BUYBUDDY has put your product back on the marketplace.'
+          : `BUYBUDDY took this listing down${reason ? ` — ${reason}` : ''}. Fix it and turn it back on in Products.`,
+        kind: 'alert',
+      });
+    }
+    res.json({ ok: true, product: db.prepare('SELECT * FROM products WHERE id = ?').get(product.id) });
+  })
+);
+
 /* ------------------------------- merchants ------------------------------- */
 
 router.get(

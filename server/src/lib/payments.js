@@ -22,6 +22,32 @@ function reference(order) {
 }
 
 /**
+ * Every call to Paystack goes through here.
+ *
+ * Paystack sits behind Cloudflare, which refuses requests whose User-Agent looks
+ * like a script (error 1010, HTTP 403) — indistinguishable from a bad key unless
+ * you look at the body. Naming ourselves fixes it and makes us visible in their
+ * logs if anything ever needs explaining.
+ */
+const USER_AGENT = 'BUYBUDDY/1.0 (+https://buybuddy-805j.onrender.com)';
+
+async function paystack(path, { method = 'GET', body } = {}) {
+  const res = await fetch(`https://api.paystack.co${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${PAYSTACK_SECRET}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'User-Agent': USER_AGENT,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let json = {};
+  try { json = await res.json(); } catch { /* non-JSON error page */ }
+  return { res, json };
+}
+
+/**
  * Does Paystack actually accept the key we have? A key being *present* is not
  * the same as a key that *works* — a typo, a revoked key or a test key in live
  * mode all look identical from the inside until a customer tries to pay.
@@ -37,10 +63,7 @@ export async function paystackReachability() {
 
   let value;
   try {
-    const res = await fetch('https://api.paystack.co/balance', {
-      headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` },
-    });
-    const json = await res.json().catch(() => ({}));
+    const { res, json } = await paystack('/balance');
     if (res.ok && json?.status) {
       const ngn = (json.data || []).find((b) => String(b.currency).toUpperCase() === 'NGN');
       const naira = ngn ? Math.round(Number(ngn.balance) / 100) : null;
@@ -103,19 +126,17 @@ export async function initPayment(order, { method = 'paystack', callbackPath = '
   const ref = reference(order);
 
   if (!MOCK) {
-    const res = await fetch('https://api.paystack.co/transaction/initialize', {
+    const { res, json } = await paystack('/transaction/initialize', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${PAYSTACK_SECRET}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: {
         email: order.__email || 'customer@buybuddy.ng',
         amount: order.total * 100, // Paystack works in kobo
         reference: ref,
         currency: 'NGN',
         callback_url: `${APP_URL}${callbackPath}`,
         metadata: { order_id: order.id, order_code: order.code },
-      }),
+      },
     });
-    const json = await res.json();
     if (!res.ok || !json?.status) throw bad(json?.message || 'Could not start payment. Please try again.');
     db.prepare(
       'INSERT INTO payments (id,order_id,provider,reference,amount,status,method,provider_payload,created_at) VALUES (?,?,?,?,?,?,?,?,?)'
@@ -142,10 +163,7 @@ export async function verifyPayment(reference) {
     return completePayment(payment, { gateway_response: 'sandbox-approved' });
   }
 
-  const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-    headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` },
-  });
-  const json = await res.json();
+  const { res, json } = await paystack(`/transaction/verify/${encodeURIComponent(reference)}`);
   if (!res.ok || !json?.status) throw bad('Could not verify this payment with the provider.');
   const data = json.data;
   if (data.status === 'success' && money(data.amount) >= payment.amount * 100) {
@@ -251,16 +269,14 @@ export async function refundPayment(orderId, { amount, reason, actor }) {
 
   let refundNote = null;
   if (payment?.provider === 'paystack' && !MOCK) {
-    const res = await fetch('https://api.paystack.co/refund', {
+    const { res, json } = await paystack('/refund', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${PAYSTACK_SECRET}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: {
         transaction: payment.reference,
         amount: Math.min(amt, payment.amount) * 100, // kobo, never more than was captured
         merchant_note: `BUYBUDDY refund ${order.code}: ${reason || 'no reason given'}`,
-      }),
+      },
     });
-    const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.status) {
       throw bad(json?.message || 'Paystack refused the refund — check the transaction in your Paystack dashboard.');
     }

@@ -292,12 +292,21 @@ export function offerJob(orderId, role) {
  * Accept a job atomically: the conditional UPDATE guarantees exactly one worker
  * wins even under concurrent requests.
  */
+/*
+ * A rider can be offered two different kinds of finished job: a store order
+ * waiting at the counter (ready_for_pickup) and a personal-shopping basket the
+ * shopper has just bought (ready_for_delivery). Accepting only the first left
+ * every "Shop for me" order paid, bought and permanently riderless.
+ */
+export const RIDER_ACCEPTABLE = ['ready_for_pickup', 'ready_for_delivery'];
+export const acceptableFor = (role) => (role === 'shopper' ? ['open_for_shoppers'] : RIDER_ACCEPTABLE);
+
 export function acceptJob(orderId, workerId, role) {
   const tx = db.transaction(() => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
     if (!order) throw bad('Order not found');
-    const target = role === 'shopper' ? 'open_for_shoppers' : 'ready_for_pickup';
-    if (order.status !== target) throw bad('This job has already been taken or is no longer available.');
+    const allowed = acceptableFor(role);
+    if (!allowed.includes(order.status)) throw bad('This job has already been taken or is no longer available.');
 
     const column = role === 'shopper' ? 'shopper_id' : 'rider_id';
     const nextStatus = role === 'shopper' ? 'shopper_assigned' : 'rider_assigned';
@@ -306,7 +315,7 @@ export function acceptJob(orderId, workerId, role) {
         `UPDATE orders SET ${column} = ?, status = ?, updated_at = ?
          WHERE id = ? AND status = ? AND (${column} IS NULL OR ${column} = '')`
       )
-      .run(workerId, nextStatus, now(), orderId, target);
+      .run(workerId, nextStatus, now(), orderId, order.status);
     if (res.changes !== 1) throw bad('This job was just taken by another worker.');
 
     db.prepare(

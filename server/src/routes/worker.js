@@ -3,7 +3,7 @@ import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { asyncHandler, bad, forbidden, notFound, now, requireFields, uid } from '../lib/util.js';
 import { notify, event, walletBalance, audit } from '../lib/settings.js';
-import { acceptJob, declineJob, offerJob, publicOrder, transition, settleOrder, orderLabel } from '../lib/orders.js';
+import { acceptJob, declineJob, offerJob, publicOrder, transition, settleOrder, orderLabel, acceptableFor } from '../lib/orders.js';
 
 const router = Router();
 const workerOnly = (req, _res, next) => {
@@ -162,8 +162,10 @@ router.post(
   workerOnly,
   asyncHandler(async (req, res) => {
     const role = req.body?.role || workerRole(req);
-    const target = role === 'shopper' ? 'open_for_shoppers' : 'ready_for_pickup';
-    const order = db.prepare(`SELECT * FROM orders WHERE status = ? ORDER BY created_at ASC LIMIT 1`).get(target);
+    const targets = acceptableFor(role);
+    const order = db
+      .prepare(`SELECT * FROM orders WHERE status IN (${targets.map(() => '?').join(',')}) ORDER BY created_at ASC LIMIT 1`)
+      .get(...targets);
     if (!order) return res.json({ order: null });
     offerJob(order.id, role);
     res.json({ offered: true });

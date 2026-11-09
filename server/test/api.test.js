@@ -900,14 +900,22 @@ test('the cart says exactly how much more is needed to reach a store minimum', a
   const token = await login('customer@buybuddy.ng');
   await api('/api/cart', { method: 'DELETE', token });
 
-  const products = await api('/api/products?limit=50');
-  // find a product priced below its store's minimum on its own
+  const products = await api('/api/products?limit=200');
+  /*
+   * Find a product priced below its store's minimum, with enough stock to reach
+   * that minimum by adding units — the cart caps quantity at what is on the
+   * shelf, so a nearly sold-out item can never clear the threshold and made this
+   * test flaky depending on what earlier tests had bought.
+   */
   let target = null;
   for (const p of products.body.products) {
     const store = await api(`/api/stores/${p.store.id}`);
-    if (store.body.store.min_order > p.price) { target = { p, min: store.body.store.min_order }; break; }
+    const min = store.body.store.min_order;
+    if (min <= p.price) continue;
+    const needed = Math.min(50, Math.ceil(min / p.price) + 1);
+    if ((p.stock ?? 0) >= needed) { target = { p, min, needed }; break; }
   }
-  assert.ok(target, 'seed data contains a product cheaper than its store minimum');
+  assert.ok(target, 'seed data contains a product cheaper than its store minimum, in stock');
 
   await api('/api/cart', { method: 'POST', token, body: { product_id: target.p.id, qty: 1 } });
   const cart = await api('/api/cart', { token });
@@ -926,7 +934,7 @@ test('the cart says exactly how much more is needed to reach a store minimum', a
   assert.ok(issue.message.includes('Minimum order'));
 
   // reach the minimum and the issue disappears
-  const qty = Math.min(50, Math.ceil(target.min / target.p.price) + 1);
+  const qty = target.needed;
   const itemId = cart.body.items[0].id;
   const bumped = await api(`/api/cart/${itemId}`, { method: 'PATCH', token, body: { qty } });
   assert.equal(bumped.status, 200, JSON.stringify(bumped.body));
@@ -1047,4 +1055,59 @@ test('cash on delivery reaches the merchant instead of stalling at pending_payme
   const accepted = await api(`/api/merchant/orders/${checkout.body.order.id}/accept`, { method: 'POST', token: merchant });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
   assert.equal(accepted.body.order.status, 'accepted');
+});
+
+test('a personal-shopping basket reaches a rider and a door, not a dead end', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const shopper = await login('shopper@buybuddy.ng');
+  const rider = await login('rider@buybuddy.ng');
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+
+  // the rider must be on shift to be offered anything
+  await api('/api/worker/availability', { method: 'POST', token: rider, body: { available: true } });
+
+  const created = await api('/api/shopping/requests', {
+    method: 'POST',
+    token: customer,
+    body: {
+      address_id: address.id,
+      payment_method: 'wallet',
+      budget: 6000,
+      items: [{ description: 'Semovita 2kg', qty: 1, target_price: 3200 }],
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const orderId = created.body.order.id;
+
+  await api(`/api/worker/jobs/${orderId}/accept`, { method: 'POST', token: shopper, body: { role: 'shopper' } });
+  await api(`/api/worker/jobs/${orderId}/start-shopping`, { method: 'POST', token: shopper });
+  const shopping = (await api(`/api/orders/${orderId}`, { token: customer })).body.order;
+  await api(`/api/worker/jobs/${orderId}/items/${shopping.shopping_items[0].id}`, {
+    method: 'PATCH', token: shopper, body: { proposed_price: 3200 },
+  });
+  await api(`/api/worker/jobs/${orderId}/submit-for-approval`, { method: 'POST', token: shopper });
+
+  const awaiting = (await api(`/api/orders/${orderId}`, { token: customer })).body.order;
+  await api(`/api/orders/${orderId}/approvals`, {
+    method: 'POST', token: customer,
+    body: { items: awaiting.shopping_items.map((i) => ({ id: i.id, action: 'approve' })) },
+  });
+  await api(`/api/worker/jobs/${orderId}/purchased`, { method: 'POST', token: shopper });
+
+  const ready = (await api(`/api/orders/${orderId}`, { token: customer })).body.order;
+  assert.equal(ready.status, 'ready_for_delivery');
+
+  // this is the step that used to fail: ready_for_delivery was not acceptable
+  const accepted = await api(`/api/worker/jobs/${orderId}/accept`, { method: 'POST', token: rider, body: { role: 'rider' } });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  assert.equal(accepted.body.order.status, 'rider_assigned');
+  assert.equal(accepted.body.order.rider_id, (await api('/api/me', { token: rider })).body.user.id);
+
+  await api(`/api/worker/jobs/${orderId}/pickup`, { method: 'POST', token: rider });
+  await api(`/api/worker/jobs/${orderId}/in-transit`, { method: 'POST', token: rider });
+  const pin = (await api(`/api/orders/${orderId}`, { token: customer })).body.order.delivery_pin;
+  const delivered = await api(`/api/worker/jobs/${orderId}/deliver`, { method: 'POST', token: rider, body: { pin } });
+  assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
+  const done = await api(`/api/orders/${orderId}/confirm-delivery`, { method: 'POST', token: customer });
+  assert.equal(done.body.order.status, 'completed');
 });

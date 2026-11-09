@@ -499,10 +499,24 @@ export function PaymentReturn() {
           </Button>
         </div>
       )}
-      {state.result && state.result.status !== 'pending' && (
+      {state.result && state.result.topup && state.result.status === 'success' && (
         <div className="card">
-          <div style={{ fontSize: 42 }}>✅</div>
-          <div className="h2" style={{ marginTop: 8 }}>Payment confirmed</div>
+          <div style={{ width: 56, height: 56, borderRadius: 999, background: 'var(--green-50)', border: '1px solid var(--green-200)', display: 'grid', placeItems: 'center', color: 'var(--green-700)' }}>
+            <Icon name="check" size={28} />
+          </div>
+          <div className="h2" style={{ marginTop: 10 }}>Wallet topped up</div>
+          <p className="sub" style={{ marginTop: 6 }}>
+            {naira(state.result.balance)} is in your wallet now.
+          </p>
+          <Button block style={{ marginTop: 16 }} onClick={() => nav('/account/wallet')}>Back to my wallet</Button>
+        </div>
+      )}
+      {state.result && !state.result.topup && state.result.status !== 'pending' && (
+        <div className="card">
+          <div style={{ width: 56, height: 56, borderRadius: 999, background: 'var(--green-50)', border: '1px solid var(--green-200)', display: 'grid', placeItems: 'center', color: 'var(--green-700)' }}>
+            <Icon name="check" size={28} />
+          </div>
+          <div className="h2" style={{ marginTop: 10 }}>Payment confirmed</div>
           <p className="sub" style={{ marginTop: 6 }}>
             {state.result.order?.code ? `Order ${state.result.order.code} is confirmed.` : 'Your payment was verified.'}
           </p>

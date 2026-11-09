@@ -272,6 +272,11 @@ export function Wallet() {
     setBusy(true);
     try {
       const r = await api.post('/api/wallet/topup', { amount: Number(amount) });
+      if (r.authorization_url) {
+        // real money: the wallet is credited only after Paystack confirms
+        window.location.href = r.authorization_url;
+        return;
+      }
       toast.success(`Wallet topped up to ${naira(r.balance)}`);
       setAmount('');
       load();
@@ -298,7 +303,10 @@ export function Wallet() {
             <button key={a} className="chip" onClick={() => setAmount(String(a))}>{naira(a)}</button>
           ))}
         </div>
-        <p className="tiny muted">Sandbox mode credits instantly. With Paystack configured, top-ups are charged to your card and credited on webhook confirmation.</p>
+        <p className="tiny muted">
+          You are taken to Paystack to pay by card, transfer, USSD or your bank app. The money appears
+          in your wallet the moment Paystack confirms it — usually straight away.
+        </p>
       </div>
 
       <div className="card card-flush">

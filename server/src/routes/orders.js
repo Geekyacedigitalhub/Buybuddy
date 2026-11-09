@@ -13,7 +13,7 @@ import {
   transition,
   eligibleWorkers,
 } from '../lib/orders.js';
-import { initPayment, verifyPayment, refundPayment } from '../lib/payments.js';
+import { initPayment, verifyPayment, refundPayment, verifyWalletTopup } from '../lib/payments.js';
 import { pointsEntry, pointsToDiscount, validateSchedule } from '../lib/growth.js';
 import { orderEvents } from '../lib/orders.js';
 
@@ -627,6 +627,8 @@ router.post(
   '/payments/:reference/verify',
   requireAuth,
   asyncHandler(async (req, res) => {
+    const topup = await verifyWalletTopup(req.params.reference);
+    if (topup) return res.json({ ...topup, topup: true, order: null });
     const result = await verifyPayment(req.params.reference);
     const payment = db.prepare('SELECT * FROM payments WHERE reference = ?').get(req.params.reference);
     const order = payment ? db.prepare('SELECT * FROM orders WHERE id = ?').get(payment.order_id) : null;

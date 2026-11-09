@@ -14,6 +14,7 @@ import { asyncHandler, bad, normalisePhone, notFound, now, requireFields, saniti
 import { notify, settingsAll, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { ensureReferralCode, linkReferral } from '../lib/growth.js';
 import { sendSms } from '../lib/sms.js';
+import { initWalletTopup } from '../lib/payments.js';
 
 const router = Router();
 
@@ -379,10 +380,9 @@ router.post(
   asyncHandler(async (req, res) => {
     const amount = Math.round(Number(req.body?.amount || 0));
     if (amount < 500) throw bad('Minimum top-up is ₦500.');
-    // In live mode this would initialise a Paystack charge and credit on webhook.
-    const balance = walletEntry(req.user.id, { type: 'credit', amount, description: 'Wallet top-up (sandbox)' });
-    notify(req.user.id, { title: 'Wallet topped up', body: `₦${amount.toLocaleString()} added to your wallet.`, kind: 'payment' });
-    res.json({ balance, credited: amount });
+    if (amount > 500_000) throw bad('Maximum top-up is ₦500,000 at a time.');
+    const out = await initWalletTopup(req.user, amount);
+    res.status(out.payment_required ? 201 : 200).json(out);
   })
 );
 

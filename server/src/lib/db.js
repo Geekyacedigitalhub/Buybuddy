@@ -192,6 +192,12 @@ CREATE TABLE IF NOT EXISTS payments (
   method TEXT, provider_payload TEXT, created_at TEXT NOT NULL, verified_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS wallet_topups (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, reference TEXT UNIQUE NOT NULL,
+  amount INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+  authorization_url TEXT, created_at TEXT NOT NULL, credited_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS wallet_entries (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, order_id TEXT, type TEXT NOT NULL CHECK (type IN ('credit','debit')),
   amount INTEGER NOT NULL, balance_after INTEGER NOT NULL, description TEXT, created_at TEXT NOT NULL

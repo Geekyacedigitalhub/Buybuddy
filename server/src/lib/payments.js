@@ -202,6 +202,107 @@ export function classifyProviderStatus(status) {
   return 'failed';
 }
 
+/* ----------------------------- wallet top-ups ---------------------------- */
+
+/**
+ * Topping up a wallet is a payment like any other: the money has to be taken
+ * before the credit appears. An earlier version of this screen simply added the
+ * amount, which meant anyone could mint Naira into their own wallet and spend it
+ * on real goods. Now it starts a real Paystack charge and the wallet is credited
+ * only after Paystack (webhook, or an explicit verify on the way back) confirms
+ * the money arrived — once, no matter how many times the callback fires.
+ */
+export async function initWalletTopup(user, amount, { callbackPath = '/#/payment/return' } = {}) {
+  const naira = money(amount);
+  const ref = `bbt_${user.id.slice(0, 8)}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+  if (MOCK) {
+    /* No provider is wired up, so there is no honest way to take the money.
+       In development and tests the credit is instant and clearly labelled. */
+    if (process.env.NODE_ENV === 'production') {
+      throw bad('Card top-up is not switched on yet. Pay by card at checkout, or contact support to add money to your wallet.');
+    }
+    const balance = walletEntry(user.id, { type: 'credit', amount: naira, description: 'Wallet top-up (test mode)' });
+    notify(user.id, { title: 'Wallet topped up', body: `₦${naira.toLocaleString()} added to your wallet.`, kind: 'payment' });
+    return { balance, credited: naira, sandbox: true };
+  }
+
+  const { res, json } = await paystack('/transaction/initialize', {
+    method: 'POST',
+    body: {
+      email: user.email || `wallet-${user.id}@buybuddy.ng`,
+      amount: naira * 100,
+      reference: ref,
+      currency: 'NGN',
+      channels: paystackChannels(),
+      callback_url: `${APP_URL}${callbackPath}`,
+      metadata: { purpose: 'wallet_topup', user_id: user.id },
+    },
+  });
+  if (!res.ok || !json?.status) throw bad(json?.message || 'Could not start the top-up. Please try again.');
+
+  db.prepare(
+    'INSERT INTO wallet_topups (id,user_id,reference,amount,status,authorization_url,created_at) VALUES (?,?,?,?,?,?,?)'
+  ).run(uid('wtu'), user.id, ref, naira, 'pending', json.data.authorization_url, now());
+
+  return { payment_required: true, reference: ref, authorization_url: json.data.authorization_url, amount: naira };
+}
+
+/** Idempotent: three webhooks and two return-screen checks still credit once. */
+export function creditWalletTopup(reference, payload) {
+  const topup = db.prepare('SELECT * FROM wallet_topups WHERE reference = ?').get(reference);
+  if (!topup) return null;
+  if (topup.status === 'credited') return { status: 'success', alreadyProcessed: true, amount: topup.amount, topup };
+
+  const paidKobo = payload?.amount ? money(payload.amount) : null;
+  if (paidKobo != null && paidKobo < topup.amount * 100) {
+    db.prepare("UPDATE wallet_topups SET status = 'failed' WHERE id = ?").run(topup.id);
+    return { status: 'failed', amount: topup.amount, topup, message: 'The amount paid was less than the top-up.' };
+  }
+
+  const balance = walletEntry(topup.user_id, {
+    type: 'credit',
+    amount: topup.amount,
+    description: 'Wallet top-up',
+  });
+  db.prepare("UPDATE wallet_topups SET status = 'credited', credited_at = ? WHERE id = ?").run(now(), topup.id);
+  notify(topup.user_id, {
+    title: 'Wallet topped up',
+    body: `₦${topup.amount.toLocaleString()} added to your wallet.`,
+    kind: 'payment',
+  });
+  return { status: 'success', amount: topup.amount, balance, topup };
+}
+
+/** The return screen asks this: has the top-up actually been paid for? */
+export async function verifyWalletTopup(reference) {
+  const topup = db.prepare('SELECT * FROM wallet_topups WHERE reference = ?').get(reference);
+  if (!topup) return null;
+  if (topup.status === 'credited') {
+    return { status: 'success', alreadyProcessed: true, amount: topup.amount, balance: walletBalance(topup.user_id) };
+  }
+  if (topup.status === 'failed') return { status: 'failed', amount: topup.amount };
+
+  if (MOCK) return creditWalletTopup(reference, { amount: topup.amount * 100, gateway_response: 'sandbox-approved' });
+
+  const { res, json } = await paystack(`/transaction/verify/${encodeURIComponent(reference)}`);
+  if (!res.ok || !json?.status) throw bad('Could not verify this payment with the provider.');
+  const data = json.data;
+  if (data.status === 'success') {
+    const out = creditWalletTopup(reference, data);
+    return { ...out, balance: walletBalance(topup.user_id) };
+  }
+  if (classifyProviderStatus(data.status) === 'pending') {
+    return {
+      status: 'pending',
+      message: data.gateway_response || 'Waiting for your bank to confirm the transfer.',
+      amount: topup.amount,
+    };
+  }
+  db.prepare("UPDATE wallet_topups SET status = 'failed' WHERE id = ?").run(topup.id);
+  return { status: 'failed', amount: topup.amount };
+}
+
 /** Server-side verification against the provider. Never trust the client. */
 export async function verifyPayment(reference) {
   const payment = db.prepare('SELECT * FROM payments WHERE reference = ?').get(reference);
@@ -304,6 +405,21 @@ export function handlePaystackWebhook(rawBody, signature) {
   const payload = JSON.parse(rawBody);
   const ref = payload?.data?.reference;
   if (!ref) return { ok: true, ignored: true };
+
+  // a wallet top-up is not attached to an order, so it settles here and returns
+  const topup = db.prepare('SELECT * FROM wallet_topups WHERE reference = ?').get(ref);
+  if (topup) {
+    if (payload.event === 'charge.success') {
+      creditWalletTopup(ref, payload.data);
+      return { ok: true, processed: true, topup: true };
+    }
+    if (payload.event === 'charge.failed') {
+      db.prepare("UPDATE wallet_topups SET status = 'failed' WHERE id = ?").run(topup.id);
+      return { ok: true, processed: true, topup: true };
+    }
+    return { ok: true, ignored: true };
+  }
+
   const payment = db.prepare('SELECT * FROM payments WHERE reference = ?').get(ref);
   if (!payment) return { ok: true, ignored: true };
   if (payload.event === 'charge.success') {

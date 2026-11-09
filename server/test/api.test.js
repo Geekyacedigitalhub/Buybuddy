@@ -1168,3 +1168,50 @@ test('36. a forgotten password can be recovered with a code', async () => {
   });
   assert.equal(viaAdmin.status, 200, JSON.stringify(viaAdmin.body));
 });
+
+test('37. wallet money only appears after it has been paid for', async () => {
+  const token = await login('customer@buybuddy.ng');
+  const before = (await api('/api/wallet', { token })).body.balance;
+
+  const tooSmall = await api('/api/wallet/topup', { method: 'POST', token, body: { amount: 100 } });
+  assert.equal(tooSmall.status, 400, 'no dust top-ups');
+
+  const { db } = await import('../src/lib/db.js');
+  const { creditWalletTopup } = await import('../src/lib/payments.js');
+
+  /*
+   * In tests there is no Paystack key, so the sandbox credits instantly — that is
+   * the only reason this goes up without money. The real path is exercised
+   * below: an intent exists, and the wallet is untouched until the provider says
+   * the money arrived.
+   */
+  const ok = await api('/api/wallet/topup', { method: 'POST', token, body: { amount: 2000 } });
+  assert.ok([200, 201].includes(ok.status), JSON.stringify(ok.body));
+  assert.equal(ok.body.credited, 2000, 'sandbox credits immediately');
+
+  const user = (await api('/api/me', { token })).body.user;
+  const beforeReal = (await api('/api/wallet', { token })).body.balance;
+  db.prepare(
+    'INSERT INTO wallet_topups (id,user_id,reference,amount,status,authorization_url,created_at) VALUES (?,?,?,?,?,?,?)'
+  ).run('wtu_test_one', user.id, 'bbt_test_ref_one', 7000, 'pending', null, new Date().toISOString());
+
+  const untouched = (await api('/api/wallet', { token })).body.balance;
+  assert.equal(untouched, beforeReal, 'an unpaid top-up adds nothing');
+
+  const credited = creditWalletTopup('bbt_test_ref_one', { amount: 700000 });
+  assert.equal(credited.status, 'success');
+  assert.equal((await api('/api/wallet', { token })).body.balance, beforeReal + 7000);
+
+  const again = creditWalletTopup('bbt_test_ref_one', { amount: 700000 });
+  assert.equal(again.alreadyProcessed, true, 'a repeated callback does not double-credit');
+  assert.equal((await api('/api/wallet', { token })).body.balance, beforeReal + 7000);
+
+  // underpayment must not unlock the money
+  db.prepare(
+    'INSERT INTO wallet_topups (id,user_id,reference,amount,status,authorization_url,created_at) VALUES (?,?,?,?,?,?,?)'
+  ).run('wtu_test_two', user.id, 'bbt_test_ref_two', 5000, 'pending', null, new Date().toISOString());
+  const short = creditWalletTopup('bbt_test_ref_two', { amount: 100000 });
+  assert.equal(short.status, 'failed', 'paying ₦1,000 for a ₦5,000 top-up is not a top-up');
+  assert.equal((await api('/api/wallet', { token })).body.balance, beforeReal + 7000, 'and adds nothing');
+  assert.ok((await api('/api/wallet', { token })).body.balance > before);
+});

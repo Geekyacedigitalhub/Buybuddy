@@ -22,6 +22,54 @@ function reference(order) {
 }
 
 /**
+ * Does Paystack actually accept the key we have? A key being *present* is not
+ * the same as a key that *works* — a typo, a revoked key or a test key in live
+ * mode all look identical from the inside until a customer tries to pay.
+ * Asking for the balance is the cheapest honest question, cached for a minute so
+ * the admin screen does not hammer the API.
+ */
+let reachability = { at: 0, value: null };
+
+export async function paystackReachability() {
+  if (!PAYSTACK_SECRET) return { configured: false, ok: false, detail: 'No key set.' };
+  if (MOCK) return { configured: true, ok: false, detail: 'Sandbox mode is forced on (PAYSTACK_MOCK=true).' };
+  if (Date.now() - reachability.at < 60_000 && reachability.value) return reachability.value;
+
+  let value;
+  try {
+    const res = await fetch('https://api.paystack.co/balance', {
+      headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json?.status) {
+      const ngn = (json.data || []).find((b) => String(b.currency).toUpperCase() === 'NGN');
+      const naira = ngn ? Math.round(Number(ngn.balance) / 100) : null;
+      value = {
+        configured: true,
+        ok: true,
+        balance_naira: naira,
+        detail: naira == null
+          ? 'Paystack accepted the key.'
+          : `Paystack accepted the key — NGN balance ₦${naira.toLocaleString()}.`,
+      };
+    } else if (res.status === 401 || res.status === 403) {
+      value = {
+        configured: true,
+        ok: false,
+        detail: json?.message || 'Paystack rejected this key. Check it is a live key with Transactions and Balance access.',
+      };
+    } else {
+      value = { configured: true, ok: false, detail: json?.message || `Paystack answered ${res.status}.` };
+    }
+  } catch {
+    // Network trouble is not the same as a bad key; say so instead of crying wolf.
+    value = { configured: true, ok: false, transient: true, detail: 'Could not reach Paystack just now — try again in a minute.' };
+  }
+  reachability = { at: Date.now(), value };
+  return value;
+}
+
+/**
  * Create a payment intent for an order and return the URL the client must open.
  * Idempotent per order: a pending intent is reused instead of double-charging.
  */

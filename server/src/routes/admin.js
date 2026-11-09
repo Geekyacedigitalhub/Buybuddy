@@ -4,7 +4,7 @@ import { requireAuth, requireRole, revokeTokens } from '../lib/auth.js';
 import { asyncHandler, bad, notFound, now, paginate, requireFields, uid, slugify, forbidden } from '../lib/util.js';
 import { notify, event, settingsAll, setSetting, DEFAULT_SETTINGS, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers, settleOrder } from '../lib/orders.js';
-import { refundPayment, paymentModes } from '../lib/payments.js';
+import { refundPayment, paymentModes, paystackReachability } from '../lib/payments.js';
 import { smsStatus } from '../lib/sms.js';
 
 const router = Router();
@@ -592,15 +592,19 @@ router.get(
   asyncHandler(async (_req, res) => {
     const pay = paymentModes();
     const sms = smsStatus();
+    // "keys are set" is not the same as "keys work" — ask Paystack directly.
+    const payDot = pay.paystack ? await paystackReachability() : { ok: false, detail: '' };
     const checks = [
       {
         key: 'payments',
         label: 'Card payments',
-        live: pay.paystack,
+        live: pay.paystack && payDot.ok !== false,
         detail: pay.paystack
-          ? 'Paystack keys are set — real cards are being charged.'
+          ? payDot.detail || 'Paystack keys are set — real cards are being charged.'
           : 'Running in sandbox. Orders are marked paid without money moving.',
-        fix: 'Set PAYSTACK_SECRET_KEY on the server, then restart.',
+        fix: pay.paystack && payDot.ok === false
+          ? 'Paystack refused the configured key. Mint a fresh restricted key with Transactions (read+write), Refunds (write) and Balance (read).'
+          : 'Set PAYSTACK_SECRET_KEY on the server, then restart.',
       },
       {
         key: 'sms',

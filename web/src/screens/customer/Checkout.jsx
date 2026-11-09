@@ -9,6 +9,24 @@ import {
 const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
+/*
+ * Two minimums can apply at once: the store's own minimum, and the platform
+ * minimum order value. ₦950 in a store with a ₦1,000 minimum, inside a ₦1,500
+ * platform minimum, needs ₦550 more — not ₦50. So the screen speaks with the
+ * larger gap; otherwise the customer adds ₦50 and walks straight into a wall.
+ */
+function cartBlocker(cart) {
+  const issues = cart?.issues || [];
+  const minimums = issues
+    .filter((i) => (i.type === 'min_order' || i.type === 'platform_min_order') && i.shortfall > 0)
+    .sort((a, b) => b.shortfall - a.shortfall);
+  return {
+    worst: minimums[0] || null,
+    closed: issues.find((i) => i.type === 'store_closed') || null,
+    others: issues.filter((i) => !['min_order', 'platform_min_order', 'store_closed'].includes(i.type)),
+  };
+}
+
 /* ---------------------------------- cart --------------------------------- */
 
 export function Cart() {
@@ -45,19 +63,23 @@ export function Cart() {
     <div className="page page-tight col">
       <SectionHead title="Your cart" subtitle={cart.store ? `From ${cart.store.name}` : ''} />
 
-      {cart.issues?.length > 0 && (
-        <div className="card" style={{ background: 'var(--warn-soft)', borderColor: '#f0dfb4' }}>
-          {cart.issues.map((i, idx) => (
-            <div key={idx} className="row" style={{ gap: 8, fontSize: 13 }}>
-              <Icon name="x" size={14} style={{ color: 'var(--warn)' }} />
-              <span>
-                {i.message}
-                {i.shortfall > 0 && <> — <b>add {naira(i.shortfall)} more</b> and you can check out.</>}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {(() => {
+        const { worst, closed, others } = cartBlocker(cart);
+        const lines = [];
+        if (closed) lines.push(closed.message);
+        if (worst) lines.push(`${worst.message} — add ${naira(worst.shortfall)} more and you can check out.`);
+        for (const o of others) lines.push(o.message);
+        if (!lines.length) return null;
+        return (
+          <div className="card" style={{ background: 'var(--warn-soft)', borderColor: '#f0dfb4' }}>
+            {lines.map((line, idx) => (
+              <div key={idx} className="row" style={{ gap: 8, fontSize: 13 }}>
+                <Icon name="x" size={14} style={{ color: 'var(--warn)' }} /> <span>{line}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       <div className="card card-flush">
         {cart.items.map((item, i) => (
@@ -90,15 +112,14 @@ export function Cart() {
            * left tapping a green button and reading a rule. So the button carries
            * the one number that matters: how much more to add.
            */
-          const blocking = (cart.issues || []).find((i) => i.type === 'min_order' || i.type === 'platform_min_order' || i.type === 'store_closed');
-          const shortfall = blocking?.shortfall;
-          const label = blocking?.type === 'store_closed'
+          const { worst, closed } = cartBlocker(cart);
+          const label = closed
             ? 'This store is closed'
-            : shortfall > 0
-              ? `Add ${naira(shortfall)} more to check out`
+            : worst
+              ? `Add ${naira(worst.shortfall)} more to check out`
               : `Go to checkout · ${naira(cart.subtotal)}`;
           return (
-            <Button size="lg" block style={{ marginTop: 14 }} onClick={() => nav('/checkout')} disabled={Boolean(blocking)}>
+            <Button size="lg" block style={{ marginTop: 14 }} onClick={() => nav('/checkout')} disabled={Boolean(closed || worst)}>
               {label}
             </Button>
           );
@@ -318,19 +339,19 @@ export function Checkout() {
           <span className="h2 mono">{naira(quote?.total ?? cart.subtotal)}</span>
         </div>
         {(() => {
-          const blocking = (cart.issues || []).find((i) => i.type === 'min_order' || i.type === 'platform_min_order' || i.type === 'store_closed');
-          const label = blocking?.type === 'store_closed'
+          const { worst, closed } = cartBlocker(cart);
+          const label = closed
             ? 'This store is closed right now'
-            : blocking?.shortfall > 0
-              ? `Add ${naira(blocking.shortfall)} more to order`
+            : worst
+              ? `Add ${naira(worst.shortfall)} more to order`
               : `Place order · ${naira(quote?.total ?? cart.subtotal)}`;
           return (
-            <Button size="lg" block style={{ marginTop: 14 }} disabled={placing || !addressId || Boolean(blocking)} onClick={placeOrder}>
+            <Button size="lg" block style={{ marginTop: 14 }} disabled={placing || !addressId || Boolean(closed || worst)} onClick={placeOrder}>
               {placing ? 'Placing order…' : label}
             </Button>
           );
         })()}
-        {(cart.issues || []).some((i) => i.type === 'min_order' || i.type === 'platform_min_order') && (
+        {cartBlocker(cart).worst && (
           <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 8 }} onClick={() => nav('/cart')}>
             Back to cart to add more
           </button>

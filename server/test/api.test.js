@@ -915,6 +915,14 @@ test('the cart says exactly how much more is needed to reach a store minimum', a
   assert.ok(issue, 'a cart below the minimum raises an issue');
   assert.equal(issue.minimum, target.min);
   assert.equal(issue.shortfall, target.min - target.p.price, 'the shortfall is the number the customer needs');
+
+  // the platform minimum is a second, higher wall on the same cart — it has to
+  // carry its own gap, or the app tells the customer ₦50 when ₦550 is the truth
+  const platform = cart.body.issues.find((i) => i.type === 'platform_min_order');
+  if (platform) {
+    assert.ok(platform.shortfall > 0 && platform.minimum > target.min - 1);
+    assert.equal(platform.shortfall, platform.minimum - target.p.price);
+  }
   assert.ok(issue.message.includes('Minimum order'));
 
   // reach the minimum and the issue disappears

@@ -37,7 +37,14 @@ function cartPayload(userId) {
   }
   const settings = settingsAll();
   if (subtotal > 0 && subtotal < settings.min_order_value) {
-    issues.push({ type: 'platform_min_order', message: `Minimum order value is ₦${settings.min_order_value.toLocaleString()}` });
+    issues.push({
+      type: 'platform_min_order',
+      message: `Minimum order value is ₦${settings.min_order_value.toLocaleString()}`,
+      // a store minimum can sit inside the platform minimum; the customer needs
+      // to clear BOTH, so both carry their own gap
+      shortfall: settings.min_order_value - subtotal,
+      minimum: settings.min_order_value,
+    });
   }
   return { items: rows, subtotal, store, issues, count: rows.reduce((n, r) => n + r.qty, 0) };
 }

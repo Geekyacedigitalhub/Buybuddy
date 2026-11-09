@@ -181,7 +181,11 @@ export const fmtAddress = (a) => {
   const parts = [];
   for (const part of [a.line1, a.area, a.city]) {
     const value = (part || '').trim();
-    if (value && !parts.some((p) => p.toLowerCase() === value.toLowerCase())) parts.push(value);
+    if (!value) continue;
+    const lower = value.toLowerCase();
+    // 'Lekki Phase 1' inside '14 Admiralty Way, Lekki Phase 1' is already said
+    if (parts.some((p) => p.toLowerCase().includes(lower))) continue;
+    parts.push(value);
   }
   return parts.join(', ');
 };

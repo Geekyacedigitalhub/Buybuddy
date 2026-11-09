@@ -291,7 +291,26 @@ export function OrderDetail() {
           {order.discount > 0 && <div className="row-between"><span className="sub">Discount {order.promo_code && `(${order.promo_code})`}</span><span className="mono" style={{ color: 'var(--green-700)' }}>− {naira(order.discount)}</span></div>}
           <div className="divider" style={{ margin: '4px 0' }} />
           <div className="row-between"><span className="h3">Total</span><span className="h3 mono">{naira(order.total)}</span></div>
-          <div className="row-between"><span className="sub">Payment</span><Badge tone={order.payment_status === 'paid' ? 'badge-ok' : 'badge-warn'}>{order.payment_status.replace('_', ' ')} · {order.payment_method}</Badge></div>
+          {(() => {
+            /*
+             * "paid cash · cash" is what the raw fields say, and it reads like a
+             * database row on the screen a customer looks at most.
+             */
+            const method = order.payment_method === 'cash' ? 'cash on delivery' : order.payment_method;
+            const settled = order.payment_status === 'paid' || order.payment_status === 'paid_cash';
+            const tone = settled ? 'badge-ok' : 'badge-warn';
+            const text = order.payment_method === 'cash'
+              ? (settled ? 'cash on delivery' : 'pay the rider')
+              : order.payment_status === 'pending'
+                ? `unpaid · ${method}`
+                : `paid · ${method}`;
+            return (
+              <div className="row-between">
+                <span className="sub">Payment</span>
+                <Badge tone={tone}>{text}</Badge>
+              </div>
+            );
+          })()}
 
           <div className="divider" />
           <div>

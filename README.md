@@ -53,7 +53,7 @@ npm run build -w web
 npm start                     # → http://localhost:4000
 ```
 
-Then sign in with any demo account (**password: `Password123!`**):
+Then sign in with any demo account (**local dev password: `Password123!`** — a production server ignores this and uses whatever `SEED_PASSWORD` is set to, so a live site never accepts a password printed in a README):
 
 | Account | Role | Lands on |
 |---|---|---|

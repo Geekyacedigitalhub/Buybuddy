@@ -76,7 +76,7 @@ ends — use it to look, not to keep.
 
 ## Signing in on the phone
 
-Same demo accounts, password `Password123!`:
+Same demo accounts. Locally the password is `Password123!`; a hosted server uses the `SEED_PASSWORD` you set there:
 
 | Role | Email |
 |---|---|

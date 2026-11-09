@@ -186,3 +186,18 @@ is not.
 The paid fix, when you are ready: Render **Starter $7/month** plus a **1 GB
 persistent disk ($0.25/month)** mounted at `/var/data`, with `DATA_DIR` set to
 `/var/data`. Then the database simply stays put and none of the above is needed.
+
+## Demo logins on a public site
+
+The demo accounts in this repository are seeded with `Password123!` — convenient
+on a laptop, a back door on the internet, because anyone who finds the repo can
+sign in as `admin@buybuddy.ng`.
+
+Set **`SEED_PASSWORD`** in the host's environment to a password you choose. Every
+seed (including the automatic one after a deploy that wipes the disk) then uses
+it, so the demo logins keep working for you and stop working for everyone else.
+With no `SEED_PASSWORD` on a production boot, the seed generates a random
+password each time and logs a warning — the published one never works.
+
+`ALLOW_DEMO_PASSWORDS=true` is an explicit escape hatch for a throwaway
+environment. Do not set it on the live site.

@@ -973,3 +973,34 @@ test('backup and restore: the whole database survives a wipe', async () => {
   const rejected = await api('/api/admin/restore', { method: 'POST', token, body: { backup: { nope: true }, confirm: 'REPLACE ALL DATA' } });
   assert.equal(rejected.status, 400);
 });
+
+test('a live server never seeds the password that is printed in the README', async () => {
+  const { default: better } = await import('better-sqlite3');
+  const { default: bcrypt } = await import('bcryptjs');
+
+  const run = (env) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'buybuddy-seed-'));
+    execFileSync(process.execPath, ['src/seed.js', '--reset'], {
+      cwd: path.resolve('.'),
+      env: { ...process.env, NODE_ENV: 'production', DATA_DIR: dir, DB_FILE: path.join(dir, 'seed.sqlite'), ...env },
+      stdio: 'pipe',
+    });
+    const d = new better(path.join(dir, 'seed.sqlite'));
+    const admin = d.prepare("SELECT password_hash FROM users WHERE email = 'admin@buybuddy.ng'").get();
+    d.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    return admin.password_hash;
+  };
+
+  // no SEED_PASSWORD: a live boot must not accept the published password
+  const random = run({ SEED_PASSWORD: '', ALLOW_DEMO_PASSWORDS: '' });
+  assert.equal(bcrypt.compareSync('Password123!', random), false, 'the README password must not work in production');
+
+  // with SEED_PASSWORD: the owner's password is the one that works, every boot
+  const owned = run({ SEED_PASSWORD: 'Owner-Chosen-Secret-1' });
+  assert.equal(bcrypt.compareSync('Owner-Chosen-Secret-1', owned), true);
+  assert.equal(bcrypt.compareSync('Password123!', owned), false);
+
+  // local development keeps the convenient default
+  assert.equal(bcrypt.compareSync('Password123!', run({ NODE_ENV: 'test', SEED_PASSWORD: '' })), true);
+});

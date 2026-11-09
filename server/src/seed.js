@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import { db, migrate, reset } from './lib/db.js';
 import { hashPassword } from './lib/auth.js';
 import { ensureDefaults, walletEntry } from './lib/settings.js';
@@ -393,7 +394,23 @@ export async function main({ reset: resetDb = true } = {}) {
   }
 
   /* ------------------------------- users -------------------------------- */
-  const password = hashPassword('Password123!');
+  /*
+   * Demo credentials are published in this repository's README, which is fine
+   * for a laptop and unacceptable for a live marketplace: anyone who finds the
+   * URL could sign in as the admin. In production the password must come from
+   * the environment; the published default exists only for local work.
+   */
+  const PROD = process.env.NODE_ENV === 'production' && !process.env.ALLOW_DEMO_PASSWORDS;
+  if (PROD && !process.env.SEED_PASSWORD) {
+    console.warn(
+      'SEED_PASSWORD is not set: seeding with random per-boot passwords. ' +
+        'Set SEED_PASSWORD in your host so demo logins survive a restart.'
+    );
+  }
+  const demoPassword =
+    process.env.SEED_PASSWORD ||
+    (PROD ? crypto.randomBytes(18).toString('base64url') : 'Password123!');
+  const password = hashPassword(demoPassword);
   const mkUser = (role, name, email, phone, extra = {}) => {
     const id = uid('usr');
     db.prepare(
@@ -760,8 +777,13 @@ export async function main({ reset: resetDb = true } = {}) {
     orders: db.prepare('SELECT COUNT(*) c FROM orders').get().c,
   };
   console.log('BUYBUDDY seed complete:', counts);
+  const shown = process.env.SEED_PASSWORD
+    ? 'as set in SEED_PASSWORD'
+    : PROD
+      ? '(random this boot — set SEED_PASSWORD to keep them)'
+      : 'Password123!';
   console.log(`
-Demo accounts (password: Password123!)
+Demo accounts (password ${shown})
   admin@buybuddy.ng        → Admin dashboard
   customer@buybuddy.ng     → Customer app
   shopper@buybuddy.ng      → Shopper app (verified)

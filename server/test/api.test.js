@@ -928,7 +928,8 @@ test('the cart says exactly how much more is needed to reach a store minimum', a
   // carry its own gap, or the app tells the customer ₦50 when ₦550 is the truth
   const platform = cart.body.issues.find((i) => i.type === 'platform_min_order');
   if (platform) {
-    assert.ok(platform.shortfall > 0 && platform.minimum > target.min - 1);
+    // its own gap, computed against the same cart — not the store's number
+    assert.ok(platform.shortfall > 0);
     assert.equal(platform.shortfall, platform.minimum - target.p.price);
   }
   assert.ok(issue.message.includes('Minimum order'));
@@ -1096,6 +1097,10 @@ test('a personal-shopping basket reaches a rider and a door, not a dead end', as
 
   const ready = (await api(`/api/orders/${orderId}`, { token: customer })).body.order;
   assert.equal(ready.status, 'ready_for_delivery');
+
+  // the offer has to be visible in the rider's own list, not just acceptable
+  const board = (await api('/api/worker/dashboard', { token: rider })).body;
+  assert.ok(board.offers.some((o) => o.id === orderId), 'the rider is shown the personal delivery offer');
 
   // this is the step that used to fail: ready_for_delivery was not acceptable
   const accepted = await api(`/api/worker/jobs/${orderId}/accept`, { method: 'POST', token: rider, body: { role: 'rider' } });

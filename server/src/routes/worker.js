@@ -93,14 +93,20 @@ router.get(
     const completed = db
       .prepare(`SELECT * FROM orders WHERE ${column} = ? AND status IN ('completed','delivered') ORDER BY created_at DESC LIMIT 20`)
       .all(req.user.id);
+    /*
+     * The list of statuses a worker can act on is the same list acceptJob()
+     * enforces — spelled out separately here, it drifted, and riders stopped
+     * being shown the personal-shopping deliveries they were allowed to take.
+     */
+    const acceptable = acceptableFor(role);
     const offers = db
       .prepare(
         `SELECT j.id AS offer_id, j.created_at AS offered_at, o.* FROM job_offers j JOIN orders o ON o.id = j.order_id
          WHERE j.worker_id = ? AND j.role = ? AND j.status = 'offered'
-           AND o.status IN ('open_for_shoppers','ready_for_pickup')
+           AND o.status IN (${acceptable.map(() => '?').join(',')})
          ORDER BY j.created_at DESC`
       )
-      .all(req.user.id, role);
+      .all(req.user.id, role, ...acceptable);
 
     const wallet = walletBalance(req.user.id);
     const today = new Date().toISOString().slice(0, 10);

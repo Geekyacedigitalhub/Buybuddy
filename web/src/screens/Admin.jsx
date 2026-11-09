@@ -272,6 +272,15 @@ function People() {
   };
   useEffect(() => { load(); }, [filters]);
 
+  const [resetCode, setResetCode] = useState(null); // {name, code, message}
+
+  const issueReset = async (user) => {
+    try {
+      const out = await api.post(`/api/admin/users/${user.id}/password-reset-code`);
+      setResetCode({ name: user.name, code: out.code, message: out.message, expires_at: out.expires_at });
+    } catch (e) { toast.error(e.message); }
+  };
+
   const setStatus = async (user, status) => {
     const reason = status === 'active' ? 'Reactivated by admin' : prompt(`Reason for ${status}?`, 'Policy violation');
     if (status !== 'active' && reason === null) return;
@@ -311,9 +320,12 @@ function People() {
                   <td><Badge tone={u.status === 'active' ? 'badge-ok' : u.status === 'suspended' ? 'badge-danger' : 'badge-warn'}>{u.status}</Badge></td>
                   <td className="tiny muted">{timeAgo(u.created_at)}</td>
                   <td>
-                    {u.role !== 'admin' && (u.status === 'active'
-                      ? <Button size="sm" variant="danger" onClick={() => setStatus(u, 'suspended')}>Suspend</Button>
-                      : <Button size="sm" variant="ghost" onClick={() => setStatus(u, 'active')}>Reactivate</Button>)}
+                    <div className="row" style={{ gap: 6 }}>
+                      <Button size="sm" variant="ghost" onClick={() => issueReset(u)}>Reset code</Button>
+                      {u.role !== 'admin' && (u.status === 'active'
+                        ? <Button size="sm" variant="danger" onClick={() => setStatus(u, 'suspended')}>Suspend</Button>
+                        : <Button size="sm" variant="ghost" onClick={() => setStatus(u, 'active')}>Reactivate</Button>)}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -321,6 +333,32 @@ function People() {
           </table>
         </div>
       )}
+
+      <Modal open={!!resetCode} onClose={() => setResetCode(null)} title="Password reset code">
+        {resetCode && (
+          <div className="col" style={{ gap: 14 }}>
+            <p className="sub" style={{ margin: 0 }}>
+              Give this to <strong>{resetCode.name}</strong> on the phone. They type it on the sign-in
+              screen under <strong>Forgot your password?</strong> and pick a new password. It works once,
+              for 15 minutes.
+            </p>
+            <div
+              className="mono"
+              style={{
+                fontSize: 30, letterSpacing: 8, fontWeight: 800, textAlign: 'center',
+                padding: '14px 10px', borderRadius: 12, background: 'var(--green-50)',
+                border: '1px solid var(--green-200)', color: 'var(--green-800)',
+              }}
+            >
+              {resetCode.code}
+            </div>
+            <p className="tiny muted" style={{ margin: 0 }}>{resetCode.message}</p>
+            <Button block onClick={() => { navigator.clipboard?.writeText(resetCode.code); toast.success('Code copied'); }}>
+              Copy code
+            </Button>
+          </div>
+        )}
+      </Modal>
     </Shell>
   );
 }

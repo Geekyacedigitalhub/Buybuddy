@@ -14,6 +14,8 @@ export default function AuthScreen() {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', role: 'customer', business_name: '', city: 'Lagos', referral_code: '' });
   const [refCheck, setRefCheck] = useState(null); // null | {valid, message}
+  const [reset, setReset] = useState({ sms: false, masked: '', code: '', identifier: '', note: '' });
+  const [helpSent, setHelpSent] = useState(false);
   const [params] = useSearchParams();
   const [busy, setBusy] = useState(false);
   const { login, register } = useAuth();
@@ -48,6 +50,29 @@ export default function AuthScreen() {
     e.preventDefault();
     setBusy(true);
     try {
+      if (mode === 'forgot') {
+        const identifier = form.email || form.phone;
+        const out = await api.post('/api/auth/password/forgot', { identifier });
+        setReset({ sms: !!out.sms, masked: out.masked || '', code: '', identifier });
+        setMode('reset');
+        toast.success(out.sms ? 'Code sent — check your phone.' : 'Request received. See the note below.');
+        return;
+      }
+      if (mode === 'help') {
+        await api.post('/api/support/public', { identifier: form.email || form.phone, message: reset.note });
+        setHelpSent(true);
+        return;
+      }
+      if (mode === 'reset') {
+        await api.post('/api/auth/password/reset', {
+          identifier: reset.identifier || form.email || form.phone,
+          code: reset.code.trim(),
+          password: form.password,
+        });
+        toast.success('Password changed — sign in with the new one.');
+        setMode('login');
+        return;
+      }
       if (mode === 'login') {
         const user = await login(form.email || form.phone, form.password);
         toast.success(`Welcome back, ${user.name.split(' ')[0]}`);
@@ -111,9 +136,25 @@ export default function AuthScreen() {
           <Logo size={52} />
           <div className="auth-brand-line">Your personal shopping partner</div>
         </div>
-        <div className="h1">{mode === 'login' ? 'Welcome back' : 'Create your account'}</div>
+        <div className="h1">
+          {mode === 'login'
+            ? 'Welcome back'
+            : mode === 'register'
+              ? 'Create your account'
+              : mode === 'help'
+                ? 'Ask support for a code'
+                : 'Get back into your account'}
+        </div>
         <p className="sub" style={{ marginTop: 4, marginBottom: 20 }}>
-          {mode === 'login' ? 'Sign in to shop, sell, or earn with BUYBUDDY.' : 'It takes less than a minute.'}
+          {mode === 'login'
+            ? 'Sign in to shop, sell, or earn with BUYBUDDY.'
+            : mode === 'register'
+              ? 'It takes less than a minute.'
+              : mode === 'forgot'
+                ? 'Tell us the phone number or email on the account and we will send a 6-digit code.'
+                : mode === 'help'
+                  ? 'You do not need to be signed in. Support reads this and texts you a 6-digit reset code.'
+                  : 'Type the code you were given, then pick a new password.'}
         </p>
 
         <form onSubmit={submit} className="col" style={{ gap: 14 }}>
@@ -150,15 +191,20 @@ export default function AuthScreen() {
             </>
           )}
 
-          <Field label={mode === 'login' ? 'Email or phone number' : 'Email address'}>
-            <Input
-              value={form.email}
-              onChange={set('email')}
-              placeholder={mode === 'login' ? 'you@example.com or 0803…' : 'you@example.com'}
-              autoComplete="username"
-              required={mode === 'login' || !form.phone}
-            />
-          </Field>
+          {mode !== 'reset' && (
+            <Field
+              label={mode === 'login' || mode === 'forgot' || mode === 'help' ? 'Email or phone number' : 'Email address'}
+              hint={mode === 'forgot' || mode === 'help' ? 'Either one works — whichever you signed up with.' : undefined}
+            >
+              <Input
+                value={form.email}
+                onChange={set('email')}
+                placeholder={mode === 'login' || mode === 'forgot' ? 'you@example.com or 0803…' : 'you@example.com'}
+                autoComplete="username"
+                required={mode === 'login' || mode === 'forgot' || mode === 'help' || !form.phone}
+              />
+            </Field>
+          )}
 
           {mode === 'register' && (
             <Field label="Phone number" hint="Nigerian numbers only — used for verification and delivery calls.">
@@ -188,21 +234,131 @@ export default function AuthScreen() {
             </Field>
           )}
 
-          <Field label="Password" hint={mode === 'register' ? 'At least 8 characters.' : undefined}>
-            <Input type="password" value={form.password} onChange={set('password')} placeholder="••••••••" autoComplete="current-password" required />
-          </Field>
+          {mode === 'help' && (
+            helpSent ? (
+              <div className="panel" style={{ padding: '12px 14px', fontSize: 13, lineHeight: 1.6, background: 'var(--green-50)', border: '1px solid var(--green-200)' }}>
+                <strong>Message sent.</strong> Support will text a 6-digit code to the phone number on
+                your account, usually within a few hours. Then open this screen again, tap{' '}
+                <strong>Forgot your password?</strong>, and type the code there.
+              </div>
+            ) : (
+              <Field label="What is the problem?" hint="For example: “I forgot my password and the phone number on my account is 0803…”">
+                <textarea
+                  className="input"
+                  rows={4}
+                  value={reset.note}
+                  onChange={(e) => setReset((r) => ({ ...r, note: e.target.value }))}
+                  placeholder="Tell us what happened and the best number to reach you on."
+                  required
+                />
+              </Field>
+            )
+          )}
 
-          <Button type="submit" size="lg" block disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+          {mode === 'reset' && (
+            <>
+              <div
+                className="panel"
+                style={{
+                  padding: '12px 14px', fontSize: 13, lineHeight: 1.6,
+                  background: reset.sms ? 'var(--green-50)' : '#FFF8EC',
+                  border: `1px solid ${reset.sms ? 'var(--green-200)' : '#F3DDB4'}`,
+                }}
+              >
+                {reset.sms ? (
+                  <>We texted a 6-digit code to <strong>{reset.masked}</strong>. It works for 15 minutes.</>
+                ) : (
+                  <>
+                    <strong>We could not text the code automatically yet.</strong> Tap{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ padding: 0, height: 'auto', verticalAlign: 'baseline', textDecoration: 'underline' }}
+                      onClick={() => { setHelpSent(false); setMode('help'); }}
+                    >
+                      Ask support for a code
+                    </button>{' '}
+                    and we will text it to the phone number on your account. Then type it below.
+                  </>
+                )}
+              </div>
+              <Field label="6-digit code">
+                <Input
+                  value={reset.code}
+                  onChange={(e) => setReset((r) => ({ ...r, code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                  placeholder="123456"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  style={{ letterSpacing: 6, fontWeight: 700, fontSize: 18 }}
+                  required
+                />
+              </Field>
+            </>
+          )}
+
+          {mode !== 'forgot' && mode !== 'help' && (
+            <Field
+              label={mode === 'reset' ? 'New password' : 'Password'}
+              hint={mode === 'login' ? undefined : 'At least 8 characters.'}
+            >
+              <Input
+                type="password"
+                value={form.password}
+                onChange={set('password')}
+                placeholder="••••••••"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                required
+              />
+            </Field>
+          )}
+
+          {mode === 'login' && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ alignSelf: 'flex-end', marginTop: -6 }}
+              onClick={() => setMode('forgot')}
+            >
+              Forgot your password?
+            </button>
+          )}
+
+          <Button type="submit" size="lg" block disabled={busy || (mode === 'help' && helpSent)}>
+            {busy
+              ? 'Please wait…'
+              : mode === 'login'
+                ? 'Sign in'
+                : mode === 'register'
+                  ? 'Create account'
+                  : mode === 'forgot'
+                    ? 'Send me a code'
+                    : mode === 'help'
+                      ? 'Send to support'
+                      : 'Set new password'}
           </Button>
         </form>
 
         <div className="row-between" style={{ marginTop: 14 }}>
-          <span className="sub">{mode === 'login' ? 'New to BUYBUDDY?' : 'Already have an account?'}</span>
+          <span className="sub">
+            {mode === 'login' ? 'New to BUYBUDDY?' : mode === 'register' ? 'Already have an account?' : 'Remembered it?'}
+          </span>
           <button className="btn btn-ghost btn-sm" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
             {mode === 'login' ? 'Create account' : 'Sign in'}
           </button>
         </div>
+
+        {mode === 'login' && (
+          <p className="tiny muted" style={{ marginTop: 10 }}>
+            Cannot get in at all?{' '}
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ padding: 0, height: 'auto', textDecoration: 'underline', fontSize: 12 }}
+              onClick={() => { setHelpSent(false); setMode('help'); }}
+            >
+              Ask support for a code
+            </button>
+          </p>
+        )}
 
         <p className="tiny muted" style={{ marginTop: 16, lineHeight: 1.7 }}>
           <Icon name="lock" size={12} style={{ verticalAlign: -1 }} /> Payments are processed securely.

@@ -13,6 +13,7 @@ import {
 import { asyncHandler, bad, normalisePhone, notFound, now, requireFields, sanitizeUser, uid } from '../lib/util.js';
 import { notify, settingsAll, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { ensureReferralCode, linkReferral } from '../lib/growth.js';
+import { sendSms } from '../lib/sms.js';
 
 const router = Router();
 
@@ -174,37 +175,93 @@ router.post(
   })
 );
 
+/**
+ * Password recovery.
+ *
+ * A phone number is the one thing every Nigerian user has, so a reset is a
+ * six-digit code sent by SMS — short enough to read out loud, which also makes
+ * support able to help when SMS is not set up yet (they can see the code on the
+ * user's row in the admin panel and read it to the caller).
+ */
+const RESET_MINUTES = 15;
+
+const maskIdentifier = (user) => {
+  if (user.phone) {
+    const p = normalisePhone(user.phone) || user.phone;
+    return `${p.slice(0, 4)} *** ${p.slice(-2)}`;
+  }
+  const [name, domain] = String(user.email || '').split('@');
+  return `${name.slice(0, 2)}***@${domain}`;
+};
+
+export function issueResetCode(userId) {
+  db.prepare('UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0').run(userId);
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  const expiresAt = new Date(Date.now() + RESET_MINUTES * 60_000).toISOString();
+  db.prepare('INSERT INTO password_resets (id,user_id,token,expires_at,created_at) VALUES (?,?,?,?,?)').run(
+    uid('rst'),
+    userId,
+    code,
+    expiresAt,
+    now()
+  );
+  return { code, expiresAt };
+}
+
 router.post(
   '/auth/password/forgot',
   asyncHandler(async (req, res) => {
-    const id = req.body?.email || req.body?.phone;
-    if (!id) throw bad('Enter the email or phone on your account.');
-    const norm = normalisePhone(id);
+    const raw = req.body?.identifier || req.body?.email || req.body?.phone;
+    if (!raw) throw bad('Enter the email or phone number on your account.');
+    const norm = normalisePhone(raw);
     const user =
-      db.prepare('SELECT * FROM users WHERE email = ?').get(String(id).toLowerCase()) ||
+      db.prepare('SELECT * FROM users WHERE email = ?').get(String(raw).toLowerCase()) ||
       (norm ? db.prepare('SELECT * FROM users WHERE phone = ?').get(norm) : null);
-    if (!user) return res.json({ sent: true }); // do not leak existence
-    const token = crypto.randomBytes(24).toString('hex');
-    db.prepare('INSERT INTO password_resets (id,user_id,token,expires_at,created_at) VALUES (?,?,?,?,?)').run(
-      uid('rst'),
-      user.id,
-      token,
-      new Date(Date.now() + 30 * 60_000).toISOString(),
-      now()
+    if (!user) {
+      // never reveal whether an account exists
+      return res.json({ sent: true, sms: false, masked: null });
+    }
+    const { code } = issueResetCode(user.id);
+    const delivery = await sendSms(
+      user.phone,
+      `BUYBUDDY: your password reset code is ${code}. It works for ${RESET_MINUTES} minutes. If you did not ask for this, ignore this message.`
     );
-    res.json({ sent: true, dev_token: process.env.NODE_ENV === 'production' ? undefined : token });
+    res.json({
+      sent: true,
+      sms: Boolean(delivery.ok),
+      masked: maskIdentifier(user),
+      expires_in: RESET_MINUTES * 60,
+    });
   })
 );
 
 router.post(
   '/auth/password/reset',
   asyncHandler(async (req, res) => {
-    requireFields(req.body || {}, ['token', 'password']);
+    requireFields(req.body || {}, ['password']);
     if (String(req.body.password).length < 8) throw bad('Password must be at least 8 characters.');
-    const row = db.prepare('SELECT * FROM password_resets WHERE token = ? AND used = 0').get(req.body.token);
-    if (!row || new Date(row.expires_at) < new Date()) throw bad('This reset link is invalid or has expired.');
+    const code = String(req.body.code || req.body.token || '').trim();
+    if (!code) throw bad('Enter the code we sent you.');
+
+    let row;
+    if (req.body.identifier || req.body.email || req.body.phone) {
+      const raw = req.body.identifier || req.body.email || req.body.phone;
+      const norm = normalisePhone(raw);
+      const user =
+        db.prepare('SELECT * FROM users WHERE email = ?').get(String(raw).toLowerCase()) ||
+        (norm ? db.prepare('SELECT * FROM users WHERE phone = ?').get(norm) : null);
+      if (!user) throw bad('That code is not valid any more. Ask for a new one.');
+      row = db
+        .prepare('SELECT * FROM password_resets WHERE user_id = ? AND token = ? AND used = 0 ORDER BY created_at DESC LIMIT 1')
+        .get(user.id, code);
+    } else {
+      row = db.prepare('SELECT * FROM password_resets WHERE token = ? AND used = 0 ORDER BY created_at DESC LIMIT 1').get(code);
+    }
+    if (!row || new Date(row.expires_at) < new Date()) {
+      throw bad('That code is wrong or has expired. Ask for a new one.');
+    }
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(req.body.password), row.user_id);
-    db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?').run(row.id);
+    db.prepare('UPDATE password_resets SET used = 1 WHERE user_id = ?').run(row.user_id);
     revokeTokens(row.user_id);
     res.json({ ok: true });
   })
@@ -412,6 +469,51 @@ router.post(
     );
     db.prepare("UPDATE support_tickets SET status = 'open', updated_at = ? WHERE id = ?").run(now(), ticket.id);
     res.json({ ok: true });
+  })
+);
+
+/**
+ * Help for people who cannot sign in.
+ *
+ * Support needs a way to hear from someone locked out of their account, so this
+ * one form is public. It still refuses to say whether the account exists — a
+ * reply is identical either way — but when it does find the account it files a
+ * ticket that support can act on and answer.
+ */
+router.post(
+  '/support/public',
+  asyncHandler(async (req, res) => {
+    const raw = String(req.body?.identifier || '').trim();
+    const message = String(req.body?.message || '').trim();
+    if (!raw || !message) throw bad('Add the phone number or email on the account and a short message.');
+    if (message.length > 1000) throw bad('Keep it under 1000 characters.');
+
+    const norm = normalisePhone(raw);
+    const user =
+      db.prepare('SELECT * FROM users WHERE email = ?').get(raw.toLowerCase()) ||
+      (norm ? db.prepare('SELECT * FROM users WHERE phone = ?').get(norm) : null);
+
+    if (user) {
+      const id = uid('tkt');
+      db.prepare(
+        `INSERT INTO support_tickets (id,order_id,customer_id,subject,category,priority,status,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      ).run(id, null, user.id, 'Locked out — needs to get back in', 'account', 'high', 'open', now(), now());
+      db.prepare('INSERT INTO support_messages (id,ticket_id,sender_id,sender_role,body,created_at) VALUES (?,?,?,?,?,?)').run(
+        uid('msg'),
+        id,
+        user.id,
+        'customer',
+        `(sent from the sign-in screen, not signed in)\n${message}\n\nReply to: ${user.phone || user.email}`,
+        now()
+      );
+      notify(user.id, {
+        title: 'We got your message',
+        body: 'Support will send you a 6-digit password reset code. Type it under “Forgot your password?” on the sign-in screen.',
+        kind: 'info',
+      });
+    }
+    res.json({ received: true });
   })
 );
 

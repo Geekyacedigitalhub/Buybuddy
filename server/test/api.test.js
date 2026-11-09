@@ -1116,3 +1116,55 @@ test('a personal-shopping basket reaches a rider and a door, not a dead end', as
   const done = await api(`/api/orders/${orderId}/confirm-delivery`, { method: 'POST', token: customer });
   assert.equal(done.body.order.status, 'completed');
 });
+
+test('36. a forgotten password can be recovered with a code', async () => {
+  const email = `forgetful${Date.now()}@example.com`;
+  const made = await api('/api/auth/register', {
+    method: 'POST',
+    body: { name: 'Forgetful Femi', email, phone: `0803${String(Date.now()).slice(-7)}`, password: 'OldPassword1!', role: 'customer' },
+  });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+
+  // asking for a code never says whether the account exists
+  const unknown = await api('/api/auth/password/forgot', { method: 'POST', body: { identifier: 'nobody@example.com' } });
+  assert.equal(unknown.status, 200);
+  assert.equal(unknown.body.masked, null);
+
+  const asked = await api('/api/auth/password/forgot', { method: 'POST', body: { identifier: email } });
+  assert.equal(asked.status, 200, JSON.stringify(asked.body));
+  assert.ok(asked.body.masked.includes('***'), 'we say where the code went, without spelling it out');
+  assert.equal(asked.body.sms, false, 'no provider configured in tests');
+
+  // the code is what support reads out, so it is six digits and in the table
+  const { db } = await import('../src/lib/db.js');
+  const row = db.prepare('SELECT * FROM password_resets ORDER BY created_at DESC LIMIT 1').get();
+  assert.match(row.token, /^\d{6}$/);
+
+  const wrong = await api('/api/auth/password/reset', { method: 'POST', body: { identifier: email, code: '000000', password: 'NewPassword1!' } });
+  assert.equal(wrong.status, 400, 'a wrong code must not work');
+
+  const short = await api('/api/auth/password/reset', { method: 'POST', body: { identifier: email, code: row.token, password: 'short' } });
+  assert.equal(short.status, 400, 'passwords stay at least 8 characters');
+
+  const done = await api('/api/auth/password/reset', { method: 'POST', body: { identifier: email, code: row.token, password: 'NewPassword1!' } });
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+
+  const oldLogin = await api('/api/auth/login', { method: 'POST', body: { identifier: email, password: 'OldPassword1!' } });
+  assert.ok([400, 401].includes(oldLogin.status), `the old password is dead (${oldLogin.status})`);
+  const newLogin = await api('/api/auth/login', { method: 'POST', body: { identifier: email, password: 'NewPassword1!' } });
+  assert.equal(newLogin.status, 200, 'the new one works');
+
+  const reused = await api('/api/auth/password/reset', { method: 'POST', body: { identifier: email, code: row.token, password: 'ThirdPassword1!' } });
+  assert.equal(reused.status, 400, 'a code works once');
+
+  // and support can always read one out from the admin panel
+  const admin = await login('admin@buybuddy.ng');
+  const issued = await api(`/api/admin/users/${newLogin.body.user.id}/password-reset-code`, { method: 'POST', token: admin });
+  assert.equal(issued.status, 200, JSON.stringify(issued.body));
+  assert.match(issued.body.code, /^\d{6}$/);
+  const viaAdmin = await api('/api/auth/password/reset', {
+    method: 'POST',
+    body: { identifier: email, code: issued.body.code, password: 'AdminHelped1!' },
+  });
+  assert.equal(viaAdmin.status, 200, JSON.stringify(viaAdmin.body));
+});

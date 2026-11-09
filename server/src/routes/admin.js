@@ -5,7 +5,8 @@ import { asyncHandler, bad, notFound, now, paginate, requireFields, uid, slugify
 import { notify, event, settingsAll, setSetting, DEFAULT_SETTINGS, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers, settleOrder } from '../lib/orders.js';
 import { refundPayment, paymentModes, paystackReachability } from '../lib/payments.js';
-import { smsStatus } from '../lib/sms.js';
+import { sendSms, smsStatus } from '../lib/sms.js';
+import { issueResetCode } from './accounts.js';
 import { dumpDatabase, restoreDatabase, tableOrder } from '../lib/backup.js';
 
 const router = Router();
@@ -261,6 +262,29 @@ router.post(
       kind: 'alert',
     });
     res.json({ ok: true });
+  })
+);
+
+router.post(
+  '/admin/users/:id/password-reset-code',
+  asyncHandler(async (req, res) => {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+    if (!user) throw notFound('User not found');
+    const { code, expiresAt } = issueResetCode(user.id);
+    const delivery = await sendSms(
+      user.phone,
+      `BUYBUDDY: your password reset code is ${code}. It works for 15 minutes.`
+    );
+    audit(req, 'user.password_reset_code', 'user', user.id, { sms: Boolean(delivery.ok) });
+    res.json({
+      code,
+      expires_at: expiresAt,
+      sms: Boolean(delivery.ok),
+      phone: user.phone || null,
+      message: delivery.ok
+        ? `Sent by SMS to ${user.phone}.`
+        : 'SMS is not switched on yet — read this code to the user yourself.',
+    });
   })
 );
 

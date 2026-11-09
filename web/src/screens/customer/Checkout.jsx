@@ -49,7 +49,11 @@ export function Cart() {
         <div className="card" style={{ background: 'var(--warn-soft)', borderColor: '#f0dfb4' }}>
           {cart.issues.map((i, idx) => (
             <div key={idx} className="row" style={{ gap: 8, fontSize: 13 }}>
-              <Icon name="x" size={14} style={{ color: 'var(--warn)' }} /> {i.message}
+              <Icon name="x" size={14} style={{ color: 'var(--warn)' }} />
+              <span>
+                {i.message}
+                {i.shortfall > 0 && <> — <b>add {naira(i.shortfall)} more</b> and you can check out.</>}
+              </span>
             </div>
           ))}
         </div>
@@ -80,9 +84,25 @@ export function Cart() {
         <div className="row-between"><span className="sub">Subtotal ({cart.count} items)</span><span className="mono strong">{naira(cart.subtotal)}</span></div>
         <div className="divider" />
         <div className="row-between"><span className="sub">Service & delivery</span><span className="sub">Calculated at checkout</span></div>
-        <Button size="lg" block style={{ marginTop: 14 }} onClick={() => nav('/checkout')} disabled={cart.issues?.some((i) => i.type === 'store_closed')}>
-          Go to checkout · {naira(cart.subtotal)}
-        </Button>
+        {(() => {
+          /*
+           * A disabled button that says nothing is a dead end — the customer is
+           * left tapping a green button and reading a rule. So the button carries
+           * the one number that matters: how much more to add.
+           */
+          const blocking = (cart.issues || []).find((i) => i.type === 'min_order' || i.type === 'platform_min_order' || i.type === 'store_closed');
+          const shortfall = blocking?.shortfall;
+          const label = blocking?.type === 'store_closed'
+            ? 'This store is closed'
+            : shortfall > 0
+              ? `Add ${naira(shortfall)} more to check out`
+              : `Go to checkout · ${naira(cart.subtotal)}`;
+          return (
+            <Button size="lg" block style={{ marginTop: 14 }} onClick={() => nav('/checkout')} disabled={Boolean(blocking)}>
+              {label}
+            </Button>
+          );
+        })()}
         <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 8 }} onClick={() => nav('/browse')}>Add more items</button>
       </div>
     </div>
@@ -297,9 +317,24 @@ export function Checkout() {
           <span className="h3">Total</span>
           <span className="h2 mono">{naira(quote?.total ?? cart.subtotal)}</span>
         </div>
-        <Button size="lg" block style={{ marginTop: 14 }} disabled={placing || !addressId} onClick={placeOrder}>
-          {placing ? 'Placing order…' : `Place order · ${naira(quote?.total ?? cart.subtotal)}`}
-        </Button>
+        {(() => {
+          const blocking = (cart.issues || []).find((i) => i.type === 'min_order' || i.type === 'platform_min_order' || i.type === 'store_closed');
+          const label = blocking?.type === 'store_closed'
+            ? 'This store is closed right now'
+            : blocking?.shortfall > 0
+              ? `Add ${naira(blocking.shortfall)} more to order`
+              : `Place order · ${naira(quote?.total ?? cart.subtotal)}`;
+          return (
+            <Button size="lg" block style={{ marginTop: 14 }} disabled={placing || !addressId || Boolean(blocking)} onClick={placeOrder}>
+              {placing ? 'Placing order…' : label}
+            </Button>
+          );
+        })()}
+        {(cart.issues || []).some((i) => i.type === 'min_order' || i.type === 'platform_min_order') && (
+          <button className="btn btn-ghost btn-sm btn-block" style={{ marginTop: 8 }} onClick={() => nav('/cart')}>
+            Back to cart to add more
+          </button>
+        )}
         <div className="tiny muted center" style={{ marginTop: 10 }}>
           <Icon name="check" size={11} style={{ verticalAlign: -1 }} /> Payments are verified on our servers, never in the app.
         </div>

@@ -895,3 +895,33 @@ test('an in-flight bank transfer is not a failed payment', async () => {
     assert.equal(classifyProviderStatus(s), 'failed', `${s} must be a failure`);
   }
 });
+
+test('the cart says exactly how much more is needed to reach a store minimum', async () => {
+  const token = await login('customer@buybuddy.ng');
+  await api('/api/cart', { method: 'DELETE', token });
+
+  const products = await api('/api/products?limit=50');
+  // find a product priced below its store's minimum on its own
+  let target = null;
+  for (const p of products.body.products) {
+    const store = await api(`/api/stores/${p.store.id}`);
+    if (store.body.store.min_order > p.price) { target = { p, min: store.body.store.min_order }; break; }
+  }
+  assert.ok(target, 'seed data contains a product cheaper than its store minimum');
+
+  await api('/api/cart', { method: 'POST', token, body: { product_id: target.p.id, qty: 1 } });
+  const cart = await api('/api/cart', { token });
+  const issue = cart.body.issues.find((i) => i.type === 'min_order');
+  assert.ok(issue, 'a cart below the minimum raises an issue');
+  assert.equal(issue.minimum, target.min);
+  assert.equal(issue.shortfall, target.min - target.p.price, 'the shortfall is the number the customer needs');
+  assert.ok(issue.message.includes('Minimum order'));
+
+  // reach the minimum and the issue disappears
+  const qty = Math.min(50, Math.ceil(target.min / target.p.price) + 1);
+  const itemId = cart.body.items[0].id;
+  const bumped = await api(`/api/cart/${itemId}`, { method: 'PATCH', token, body: { qty } });
+  assert.equal(bumped.status, 200, JSON.stringify(bumped.body));
+  const after = await api('/api/cart', { token });
+  assert.ok(!after.body.issues.some((i) => i.type === 'min_order'), 'adding items clears the minimum-order issue');
+});

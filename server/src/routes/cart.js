@@ -26,7 +26,15 @@ function cartPayload(userId) {
     if (r.stock < r.qty) issues.push({ product_id: r.product_id, type: 'stock', message: `Only ${r.stock} left of ${r.name}` });
   }
   if (store && !store.is_open) issues.push({ type: 'store_closed', message: `${store.name} is currently closed` });
-  if (store && subtotal < store.min_order) issues.push({ type: 'min_order', message: `Minimum order for ${store.name} is ₦${store.min_order.toLocaleString()}` });
+  if (store && subtotal < store.min_order) {
+    issues.push({
+      type: 'min_order',
+      message: `Minimum order for ${store.name} is ₦${store.min_order.toLocaleString()}`,
+      // the number the customer actually needs: how much more to add
+      shortfall: store.min_order - subtotal,
+      minimum: store.min_order,
+    });
+  }
   const settings = settingsAll();
   if (subtotal > 0 && subtotal < settings.min_order_value) {
     issues.push({ type: 'platform_min_order', message: `Minimum order value is ₦${settings.min_order_value.toLocaleString()}` });

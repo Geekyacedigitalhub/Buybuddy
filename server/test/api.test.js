@@ -1026,3 +1026,25 @@ test('admin can create a plain customer account — and nothing more powerful', 
   const shortPw = await api('/api/admin/users', { method: 'POST', token, body: { name: 'Weak', email: 'weak@buybuddy.ng', password: 'short' } });
   assert.equal(shortPw.status, 400);
 });
+
+test('cash on delivery reaches the merchant instead of stalling at pending_payment', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const products = (await api('/api/products?limit=200')).body.products;
+  for (const p of products.filter((x) => x.store.name === 'GreenMart Supermarket').slice(0, 2)) {
+    await api('/api/cart', { method: 'POST', token: customer, body: { product_id: p.id, qty: 2 } });
+  }
+  const checkout = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'cash' },
+  });
+  assert.equal(checkout.status, 201, JSON.stringify(checkout.body));
+  assert.equal(checkout.body.order.payment_status, 'paid_cash', 'the money is labelled as cash');
+  assert.equal(checkout.body.order.status, 'paid', 'and the store can already see it');
+
+  // the merchant can accept it — this is the exact step that used to fail
+  const merchant = await login('merchant1@buybuddy.ng');
+  const accepted = await api(`/api/merchant/orders/${checkout.body.order.id}/accept`, { method: 'POST', token: merchant });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  assert.equal(accepted.body.order.status, 'accepted');
+});

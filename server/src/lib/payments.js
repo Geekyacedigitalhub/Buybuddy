@@ -132,8 +132,14 @@ export async function initPayment(order, { method = 'paystack', callbackPath = '
 
   if (method === 'cash') {
     if (!s.cod_enabled) throw bad('Cash on delivery is currently unavailable.');
-    db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?').run('paid_cash', now(), order.id);
+    /*
+     * Order matters. markOrderPaid() steps aside for an order that already reads
+     * "paid" or "paid_cash", so stamping paid_cash first left cash-on-delivery
+     * orders sitting at pending_payment — the merchant could never accept them.
+     * Confirm first, label the money second.
+     */
     markOrderPaid(order.id, { provider: 'cash', reference: `cash_${order.id.slice(0, 8)}`, amount: order.total });
+    db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?').run('paid_cash', now(), order.id);
     return { method: 'cash', reference: null, authorization_url: null, paid: true };
   }
 

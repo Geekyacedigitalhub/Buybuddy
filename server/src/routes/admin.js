@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../lib/db.js';
-import { requireAuth, requireRole, revokeTokens } from '../lib/auth.js';
+import { requireAuth, requireRole, revokeTokens, hashPassword } from '../lib/auth.js';
 import { asyncHandler, bad, notFound, now, paginate, requireFields, uid, slugify, forbidden } from '../lib/util.js';
 import { notify, event, settingsAll, setSetting, DEFAULT_SETTINGS, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { publicOrder, transition, forceAssign, orderLabel, eligibleWorkers, settleOrder } from '../lib/orders.js';
@@ -218,6 +218,29 @@ router.get(
       }));
     const total = db.prepare(`SELECT COUNT(*) c FROM users WHERE ${sql}`).get(...params).c;
     res.json({ users: rows, total, page });
+  })
+);
+
+/*
+ * Support needs this and so does app review: a real account with a password only
+ * we know, instead of handing out the shared demo login. Nothing here can create
+ * another admin, and the password is never returned to the caller.
+ */
+router.post(
+  '/admin/users',
+  asyncHandler(async (req, res) => {
+    const { name, email, phone, role = 'customer', password, area, city = 'Lagos' } = req.body || {};
+    requireFields(req.body, ['name', 'email', 'password']);
+    if (!['customer', 'shopper', 'rider', 'merchant'].includes(role)) throw bad('That role cannot be created here.');
+    if (String(password).length < 10) throw bad('Use a password of at least 10 characters.');
+    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw bad('That email is already registered.');
+    const id = uid('usr');
+    db.prepare(
+      `INSERT INTO users (id,role,name,email,phone,password_hash,status,avatar,city,area,phone_verified,email_verified,created_at)
+       VALUES (?,?,?,?,?,?,'active',NULL,?,?,1,1,?)`
+    ).run(id, role, name, email, phone || null, hashPassword(String(password)), city, area || null, now());
+    audit(req, 'user.create', 'user', id, { role, email });
+    res.status(201).json({ user: { id, role, name, email } });
   })
 );
 

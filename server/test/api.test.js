@@ -1004,3 +1004,25 @@ test('a live server never seeds the password that is printed in the README', asy
   // local development keeps the convenient default
   assert.equal(bcrypt.compareSync('Password123!', run({ NODE_ENV: 'test', SEED_PASSWORD: '' })), true);
 });
+
+test('admin can create a plain customer account — and nothing more powerful', async () => {
+  const token = await login('admin@buybuddy.ng');
+  const created = await api('/api/admin/users', {
+    method: 'POST',
+    token,
+    body: { name: 'Play Reviewer', email: 'reviewer@buybuddy.ng', password: 'Reviewer-Pass-2026', phone: '+2347001112233' },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.user.role, 'customer');
+  assert.equal(created.body.user.password, undefined, 'the password must never come back');
+
+  const signedIn = await api('/api/auth/login', { method: 'POST', body: { identifier: 'reviewer@buybuddy.ng', password: 'Reviewer-Pass-2026' } });
+  assert.equal(signedIn.status, 200);
+  assert.equal(signedIn.body.user.role, 'customer');
+
+  const asAdmin = await api('/api/admin/users', { method: 'POST', token, body: { name: 'Sneaky', email: 'sneaky@buybuddy.ng', password: 'Sneaky-Pass-2026', role: 'admin' } });
+  assert.equal(asAdmin.status, 400, 'this endpoint cannot mint an admin');
+
+  const shortPw = await api('/api/admin/users', { method: 'POST', token, body: { name: 'Weak', email: 'weak@buybuddy.ng', password: 'short' } });
+  assert.equal(shortPw.status, 400);
+});

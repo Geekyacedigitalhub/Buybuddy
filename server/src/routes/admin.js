@@ -482,15 +482,38 @@ router.post(
     const payout = db.prepare('SELECT * FROM payouts WHERE id = ?').get(req.params.id);
     if (!payout) throw notFound('Payout not found');
     if (decision === 'reject') {
+      const why = String(req.body?.reason || '').slice(0, 300);
+      /*
+       * The money was taken out of their wallet when they asked, so a rejection
+       * has to put it back — otherwise "rejected" quietly keeps the cash.
+       */
+      if (payout.held) {
+        walletEntry(payout.worker_id, {
+          type: 'credit',
+          amount: payout.amount,
+          description: 'Withdrawal rejected — money returned',
+        });
+        db.prepare('UPDATE payouts SET held = 0 WHERE id = ?').run(payout.id);
+      }
       db.prepare("UPDATE payouts SET status = 'rejected', processed_at = ? WHERE id = ?").run(now(), payout.id);
-      notify(payout.worker_id, { title: 'Withdrawal rejected', body: 'Contact support for details.', kind: 'payment' });
+      notify(payout.worker_id, {
+        title: 'Withdrawal rejected',
+        body: why
+          ? `${why} — ₦${payout.amount.toLocaleString()} is back in your wallet.`
+          : `₦${payout.amount.toLocaleString()} is back in your wallet. Contact support for details.`,
+        kind: 'payment',
+      });
     } else if (decision === 'approve') {
       db.prepare("UPDATE payouts SET status = 'approved', processed_at = ? WHERE id = ?").run(now(), payout.id);
       notify(payout.worker_id, { title: 'Withdrawal approved', body: 'Your money is on the way.', kind: 'payment' });
     } else {
-      const bal = walletBalance(payout.worker_id);
-      if (bal < payout.amount) throw bad('Worker balance is too low to complete this payout.');
-      walletEntry(payout.worker_id, { type: 'debit', amount: payout.amount, description: 'Withdrawal paid out' });
+      if (!payout.held) {
+        // a request made before money was held at request time
+        const bal = walletBalance(payout.worker_id);
+        if (bal < payout.amount) throw bad('Worker balance is too low to complete this payout.');
+        walletEntry(payout.worker_id, { type: 'debit', amount: payout.amount, description: 'Withdrawal paid out' });
+        db.prepare('UPDATE payouts SET held = 0 WHERE id = ?').run(payout.id);
+      }
       db.prepare("UPDATE payouts SET status = 'paid', processed_at = ? WHERE id = ?").run(now(), payout.id);
       notify(payout.worker_id, { title: 'Withdrawal paid', body: `₦${payout.amount.toLocaleString()} sent to your bank.`, kind: 'payment' });
     }

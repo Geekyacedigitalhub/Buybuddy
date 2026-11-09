@@ -302,6 +302,8 @@ export function migrate() {
   ensureColumn('orders', 'rider_lng', 'REAL');
   ensureColumn('orders', 'rider_accuracy', 'REAL');
   ensureColumn('orders', 'rider_updated_at', 'TEXT');
+  // money reserved out of a worker's wallet when they ask for a withdrawal
+  ensureColumn('payouts', 'held', 'INTEGER NOT NULL DEFAULT 0');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL');
 }
 

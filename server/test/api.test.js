@@ -1254,3 +1254,47 @@ test('38. admin can pull one bad listing without freezing the whole shop', async
   const refused = await api(`/api/admin/products/${first.id}`, { method: 'PATCH', token: customers, body: { status: 'inactive' } });
   assert.ok([401, 403].includes(refused.status), 'only admins moderate');
 });
+
+test('39. a withdrawal sets the money aside instead of promising it twice', async () => {
+  const rider = await login('rider@buybuddy.ng');
+  await api('/api/worker/profile', {
+    method: 'PATCH', token: rider,
+    body: { bank_name: 'GTBank', account_number: '0123456789', account_name: 'Chinedu Okeke' },
+  });
+  const admin = await login('admin@buybuddy.ng');
+  // the demo data ships with a withdrawal already waiting — clear it first
+  const earnings = await api('/api/worker/earnings', { token: rider });
+  for (const p of earnings.body.payouts.filter((x) => ['requested', 'approved'].includes(x.status))) {
+    await api(`/api/admin/payouts/${p.id}/decision`, { method: 'POST', token: admin, body: { decision: 'reject', reason: 'Cleanup' } });
+  }
+
+  const before = (await api('/api/wallet', { token: rider })).body.balance;
+  assert.ok(before >= 2000, `rider needs money to withdraw first (has ${before})`);
+
+  const first = await api('/api/worker/payouts', { method: 'POST', token: rider, body: { amount: 1000 } });
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  const afterFirst = (await api('/api/wallet', { token: rider })).body.balance;
+  assert.equal(afterFirst, before - 1000, 'the money is held, not still spendable');
+
+  const second = await api('/api/worker/payouts', { method: 'POST', token: rider, body: { amount: 1000 } });
+  assert.equal(second.status, 400, 'a second request cannot be filed over the top');
+  assert.match(second.body.error, /already have a ₦1,000 withdrawal waiting/i);
+
+  const rejected = await api(`/api/admin/payouts/${first.body.payout.id}/decision`, {
+    method: 'POST', token: admin, body: { decision: 'reject', reason: 'Bank details could not be verified' },
+  });
+  assert.equal(rejected.status, 200);
+  assert.equal((await api('/api/wallet', { token: rider })).body.balance, before, 'a rejection gives it all back');
+
+  const again = await api('/api/worker/payouts', { method: 'POST', token: rider, body: { amount: 1000 } });
+  assert.equal(again.status, 201, 'and they can ask again');
+  const approved = await api(`/api/admin/payouts/${again.body.payout.id}/decision`, {
+    method: 'POST', token: admin, body: { decision: 'approve' },
+  });
+  assert.equal(approved.status, 200);
+  const paid = await api(`/api/admin/payouts/${again.body.payout.id}/decision`, {
+    method: 'POST', token: admin, body: { decision: 'pay' },
+  });
+  assert.equal(paid.status, 200);
+  assert.equal((await api('/api/wallet', { token: rider })).body.balance, before - 1000, 'paid once, debited once');
+});

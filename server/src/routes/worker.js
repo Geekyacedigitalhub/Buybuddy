@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { asyncHandler, bad, forbidden, notFound, now, requireFields, uid } from '../lib/util.js';
-import { notify, event, walletBalance, audit } from '../lib/settings.js';
+import { notify, event, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { acceptJob, declineJob, offerJob, publicOrder, transition, settleOrder, orderLabel, acceptableFor } from '../lib/orders.js';
 
 const router = Router();
@@ -455,16 +455,46 @@ router.post(
   workerOnly,
   asyncHandler(async (req, res) => {
     const amount = Math.round(Number(req.body?.amount || 0));
-    const balance = walletBalance(req.user.id);
     if (amount < 1000) throw bad('Minimum withdrawal is ₦1,000.');
+
+    /*
+     * The money leaves the wallet here, not when the bank transfer happens.
+     * Without this an earner with ₦5,000 could file five ₦5,000 requests — each
+     * one looked affordable because nothing had been set aside — and the person
+     * approving them had no way to see it.
+     */
+    const open = db
+      .prepare("SELECT * FROM payouts WHERE worker_id = ? AND status IN ('requested','approved') ORDER BY requested_at DESC LIMIT 1")
+      .get(req.user.id);
+    if (open) {
+      throw bad(
+        `You already have a ₦${open.amount.toLocaleString()} withdrawal waiting (${open.status}). ` +
+        'Wait for it to be paid, or ask support to cancel it.'
+      );
+    }
+
+    const balance = walletBalance(req.user.id);
     if (amount > balance) throw bad(`You can withdraw up to ₦${balance.toLocaleString()}.`);
     const p = profile(req.user.id);
     if (!p?.account_number) throw bad('Add your bank account details before requesting a withdrawal.');
+
     const id = uid('po');
-    db.prepare('INSERT INTO payouts (id,worker_id,amount,status,note,requested_at) VALUES (?,?,?,?,?,?)').run(
-      id, req.user.id, amount, 'requested', req.body?.note || null, now()
-    );
-    notify(req.user.id, { title: 'Withdrawal requested', body: `₦${amount.toLocaleString()} is pending approval.`, kind: 'payment' });
+    const tx = db.transaction(() => {
+      db.prepare('INSERT INTO payouts (id,worker_id,amount,status,note,requested_at,held) VALUES (?,?,?,?,?,?,1)').run(
+        id, req.user.id, amount, 'requested', req.body?.note || null, now()
+      );
+      walletEntry(req.user.id, {
+        type: 'debit',
+        amount,
+        description: 'Withdrawal requested (held until paid)',
+      });
+    });
+    tx();
+    notify(req.user.id, {
+      title: 'Withdrawal requested',
+      body: `₦${amount.toLocaleString()} is set aside and pending approval.`,
+      kind: 'payment',
+    });
     res.status(201).json({ payout: db.prepare('SELECT * FROM payouts WHERE id = ?').get(id) });
   })
 );

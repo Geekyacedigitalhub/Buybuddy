@@ -583,9 +583,17 @@ function Finance() {
   useEffect(() => { load(); }, []);
 
   const decide = async (payout, decision) => {
+    const reason = decision === 'reject'
+      ? prompt(`Why is ${payout.worker_name}'s ₦${payout.amount.toLocaleString()} withdrawal being rejected? They will see this.`, 'Bank details could not be verified')
+      : undefined;
+    if (decision === 'reject' && reason === null) return;
     try {
-      await api.post(`/api/admin/payouts/${payout.id}/decision`, { decision });
-      toast.success(`Payout ${decision}`);
+      await api.post(`/api/admin/payouts/${payout.id}/decision`, { decision, reason });
+      toast.success(
+        decision === 'reject'
+          ? `Rejected — ₦${payout.amount.toLocaleString()} returned to ${payout.worker_name}`
+          : `Payout ${decision}`,
+      );
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -618,7 +626,7 @@ function Finance() {
                     {p.status === 'requested' && (
                       <div className="row" style={{ gap: 6 }}>
                         <Button size="sm" onClick={() => decide(p, 'approve')}>Approve</Button>
-                        <Button size="sm" variant="danger" onClick={() => decide(p, 'reject')}>Reject</Button>
+                        <Button size="sm" variant="danger" onClick={() => decide(p, 'reject')}>Reject &amp; refund</Button>
                       </div>
                     )}
                     {p.status === 'approved' && <Button size="sm" onClick={() => decide(p, 'pay')}>Mark paid</Button>}

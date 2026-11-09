@@ -854,3 +854,27 @@ test('webhook: signatures are checked, and both webhook paths exist', async () =
     assert.equal(res.status, 400, `${path} must exist and reject a bad signature`);
   }
 });
+
+test('payment channels: card, transfer, OPay-style bank wallet, USSD, QR', async () => {
+  const { paystackChannels } = await import('../src/lib/payments.js');
+
+  const defaults = paystackChannels();
+  for (const c of ['card', 'bank_transfer', 'bank', 'ussd']) {
+    assert.ok(defaults.includes(c), `${c} must be offered by default`);
+  }
+
+  // an operator can narrow or extend the list without a code change
+  const saved = process.env.PAYSTACK_CHANNELS;
+  process.env.PAYSTACK_CHANNELS = 'card , bank_transfer';
+  assert.deepEqual(paystackChannels(), ['card', 'bank_transfer']);
+
+  // a typo must not take the whole checkout down: unknown names are dropped
+  process.env.PAYSTACK_CHANNELS = 'card,nonsense_channel';
+  assert.deepEqual(paystackChannels(), ['card']);
+
+  process.env.PAYSTACK_CHANNELS = 'nonsense';
+  assert.deepEqual(paystackChannels(), ['card'], 'never send an empty channel list to Paystack');
+
+  if (saved === undefined) delete process.env.PAYSTACK_CHANNELS;
+  else process.env.PAYSTACK_CHANNELS = saved;
+});

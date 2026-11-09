@@ -177,7 +177,7 @@ export function Checkout() {
   if (!cart.items.length) return <div className="page"><Empty icon="bag" title="Nothing to check out" action={<Button onClick={() => nav('/browse')}>Browse</Button>} /></div>;
 
   const methods = [
-    { id: 'paystack', label: 'Card / bank transfer', sub: quote?.payment_methods?.card ? 'Paystack — secure' : 'Unavailable', icon: 'card' },
+    { id: 'paystack', label: 'Card, transfer or OPay', sub: quote?.payment_methods?.card ? 'Paystack — card, bank transfer, USSD, OPay' : 'Unavailable', icon: 'card' },
     ...(config?.wallet_enabled !== false ? [{ id: 'wallet', label: 'BUYBUDDY wallet', sub: 'Instant, no card needed', icon: 'wallet' }] : []),
     ...(config?.cod_enabled !== false ? [{ id: 'cash', label: 'Cash on delivery', sub: 'Pay the rider on arrival', icon: 'truck' }] : []),
   ];
@@ -249,6 +249,12 @@ export function Checkout() {
             {paymentMethod === m.id && <Icon name="check" size={16} style={{ color: 'var(--green-700)' }} />}
           </button>
         ))}
+        {paymentMethod === 'paystack' && (
+          <div className="tiny muted" style={{ lineHeight: 1.55 }}>
+            On the next screen choose <b>Card</b>, <b>Bank transfer</b> (a one-off account number you transfer
+            into from any bank app), <b>Pay with Bank</b> for your <b>OPay</b>, PalmPay or Kuda wallet, or <b>USSD</b>.
+          </div>
+        )}
         <Field label="Promo code">
           <div className="row" style={{ gap: 8 }}>
             <Input value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="WELCOME10" />

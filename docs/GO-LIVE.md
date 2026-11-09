@@ -30,6 +30,20 @@ with either the secret key or the webhook signing secret.
 **Leave IP whitelisting off.** Your server's outbound address changes; whitelisting it locks you out of
 your own API. The signature check is what actually protects the webhook.
 
+### Which ways customers can pay
+
+The server asks Paystack for these channels on every order: **card**, **bank_transfer** (a one-off
+account number, paid from any bank app), **bank** (Pay with Bank — this is where **OPay**, PalmPay,
+Kuda and 27 other banks appear), **USSD** and **QR**. Override with `PAYSTACK_CHANNELS` if you want to
+add or remove one, e.g. `PAYSTACK_CHANNELS=card,bank_transfer`.
+
+**To switch OPay on at Paystack:** dashboard → **Settings → Preferences** → tick **Bank**. That single
+box enables Pay with Bank and with it Pay with OPay. Nothing to change on our side — the app already
+offers the channel; Paystack decides what appears on its checkout page.
+
+The payment record stores the channel the customer actually used (`card`, `bank_transfer`, `bank`,
+`ussd`), which makes reconciling against your Paystack dashboard straightforward.
+
 Paystack charges roughly **1.5% + ₦100** per transaction above ₦2,500 (capped at ₦2,000). Money settles
 to your bank account on Paystack's schedule.
 

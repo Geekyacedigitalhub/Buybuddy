@@ -31,6 +31,33 @@ function reference(order) {
  */
 const USER_AGENT = 'BUYBUDDY/1.0 (+https://buybuddy-805j.onrender.com)';
 
+/**
+ * Which ways a Nigerian customer can actually pay.
+ *
+ * - `card`          Visa, Mastercard, Verve
+ * - `bank_transfer` a one-off account number to transfer into — the most trusted
+ *                   option here, and it works from any banking app
+ * - `bank`          Pay with Bank, which is how **OPay**, PalmPay, Kuda and 27
+ *                   other banks/apps appear at checkout
+ * - `ussd`          dial a code, works on a phone with no data at all
+ * - `qr`            scan with a bank app
+ *
+ * `PAYSTACK_CHANNELS` overrides the list (comma separated) if you ever want to add
+ * `apple_pay` or `eft`. Unknown names are dropped rather than sent to Paystack,
+ * because one bad value fails the whole transaction.
+ */
+const KNOWN_CHANNELS = ['card', 'bank', 'bank_transfer', 'ussd', 'qr', 'eft', 'mobile_money', 'apple_pay', 'payattitude'];
+
+export function paystackChannels() {
+  const configured = String(process.env.PAYSTACK_CHANNELS || '')
+    .split(',')
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean);
+  const wanted = configured.length ? configured : ['card', 'bank', 'bank_transfer', 'ussd', 'qr'];
+  const valid = wanted.filter((c) => KNOWN_CHANNELS.includes(c));
+  return valid.length ? valid : ['card'];
+}
+
 async function paystack(path, { method = 'GET', body } = {}) {
   const res = await fetch(`https://api.paystack.co${path}`, {
     method,
@@ -133,6 +160,7 @@ export async function initPayment(order, { method = 'paystack', callbackPath = '
         amount: order.total * 100, // Paystack works in kobo
         reference: ref,
         currency: 'NGN',
+        channels: paystackChannels(),
         callback_url: `${APP_URL}${callbackPath}`,
         metadata: { order_id: order.id, order_code: order.code },
       },
@@ -180,8 +208,12 @@ export function completePayment(payment, payload) {
   const tx = db.transaction(() => {
     const fresh = db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id);
     if (fresh.status === 'success') return { status: 'success', alreadyProcessed: true, payment: fresh };
-    db.prepare("UPDATE payments SET status = 'success', verified_at = ?, provider_payload = ? WHERE id = ?").run(
+    // Remember how they paid — card, transfer, USSD or bank wallet. Refunds and
+    // reconciliation both go smoother when the channel is on the record.
+    const channel = payload?.channel ? String(payload.channel).slice(0, 24) : null;
+    db.prepare("UPDATE payments SET status = 'success', verified_at = ?, method = ?, provider_payload = ? WHERE id = ?").run(
       now(),
+      channel || payment.method || 'card',
       JSON.stringify(payload || {}).slice(0, 4000),
       payment.id
     );

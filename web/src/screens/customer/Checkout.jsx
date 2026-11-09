@@ -389,12 +389,33 @@ export function PaymentReturn() {
 
   useEffect(() => {
     if (!reference) return setState({ loading: false, error: 'No payment reference supplied.' });
-    api.post(`/api/payments/${reference}/verify`, {})
-      .then((r) => {
+
+    let tries = 0;
+    let stop = false;
+    const check = async () => {
+      try {
+        const r = await api.post(`/api/payments/${reference}/verify`, {});
+        if (stop) return;
         setState({ loading: false, result: r });
-        if (r.order) setTimeout(() => nav(`/orders/${r.order.id}`), 1200);
-      })
-      .catch((e) => setState({ loading: false, error: e.message }));
+        if (r.status === 'success' && r.order) {
+          setTimeout(() => nav(`/orders/${r.order.id}`), 1200);
+          return;
+        }
+        /**
+         * A transfer is not instant: the money leaves their bank and lands a
+         * little later. Nothing is wrong yet, so keep asking quietly for two
+         * minutes instead of announcing a failure that has not happened.
+         */
+        if (r.status === 'pending' && tries < 24) {
+          tries += 1;
+          setTimeout(check, 5000);
+        }
+      } catch (e) {
+        if (!stop) setState({ loading: false, error: e.message });
+      }
+    };
+    check();
+    return () => { stop = true; };
   }, [reference]);
 
   return (
@@ -407,7 +428,22 @@ export function PaymentReturn() {
           <Button block style={{ marginTop: 14 }} onClick={() => nav('/orders')}>Go to my orders</Button>
         </div>
       )}
-      {state.result && (
+      {state.result && state.result.status === 'pending' && (
+        <div className="card">
+          <div className="h2">Waiting for your bank</div>
+          <p className="sub" style={{ marginTop: 6 }}>
+            {state.result.message || 'We are waiting for your bank to confirm the transfer.'}
+          </p>
+          <p className="sub" style={{ marginTop: 6 }}>
+            Keep this page open — it updates itself. You can also close it; your order is saved and will
+            confirm on its own the moment the money lands.
+          </p>
+          <Button block style={{ marginTop: 16 }} onClick={() => nav(state.result.order ? `/orders/${state.result.order.id}` : '/orders')}>
+            View my order
+          </Button>
+        </div>
+      )}
+      {state.result && state.result.status !== 'pending' && (
         <div className="card">
           <div style={{ fontSize: 42 }}>✅</div>
           <div className="h2" style={{ marginTop: 8 }}>Payment confirmed</div>

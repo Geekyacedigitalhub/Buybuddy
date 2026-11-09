@@ -878,3 +878,20 @@ test('payment channels: card, transfer, OPay-style bank wallet, USSD, QR', async
   if (saved === undefined) delete process.env.PAYSTACK_CHANNELS;
   else process.env.PAYSTACK_CHANNELS = saved;
 });
+
+test('an in-flight bank transfer is not a failed payment', async () => {
+  const { classifyProviderStatus } = await import('../src/lib/payments.js');
+
+  // the money arrived
+  assert.equal(classifyProviderStatus('success'), 'success');
+
+  // the money is on its way — none of these may cancel the order
+  for (const s of ['ongoing', 'pending', 'queued', 'processing', 'send_otp', 'abandoned']) {
+    assert.equal(classifyProviderStatus(s), 'pending', `${s} must be treated as still in flight`);
+  }
+
+  // these really did fail
+  for (const s of ['failed', 'reversed', 'declined']) {
+    assert.equal(classifyProviderStatus(s), 'failed', `${s} must be a failure`);
+  }
+});

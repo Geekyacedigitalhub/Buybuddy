@@ -181,6 +181,21 @@ export async function initPayment(order, { method = 'paystack', callbackPath = '
   return { reference: ref, authorization_url: url, method: 'paystack', sandbox: true };
 }
 
+/**
+ * A bank transfer is not instant. The customer leaves for their banking app and
+ * the money lands a minute later — or in ten. Paystack calls that `ongoing`,
+ * `pending`, `queued`; those are not failures. Marking them failed would cancel
+ * a perfectly good order while the money was still in flight, so only an
+ * explicit failure counts as one.
+ */
+const IN_FLIGHT_STATUSES = ['ongoing', 'pending', 'queued', 'processing', 'send_otp', 'send_pin', 'pay_offline', 'abandoned'];
+
+export function classifyProviderStatus(status) {
+  if (status === 'success') return 'success';
+  if (IN_FLIGHT_STATUSES.includes(status)) return 'pending';
+  return 'failed';
+}
+
 /** Server-side verification against the provider. Never trust the client. */
 export async function verifyPayment(reference) {
   const payment = db.prepare('SELECT * FROM payments WHERE reference = ?').get(reference);
@@ -194,9 +209,24 @@ export async function verifyPayment(reference) {
   const { res, json } = await paystack(`/transaction/verify/${encodeURIComponent(reference)}`);
   if (!res.ok || !json?.status) throw bad('Could not verify this payment with the provider.');
   const data = json.data;
+
   if (data.status === 'success' && money(data.amount) >= payment.amount * 100) {
     return completePayment(payment, data);
   }
+
+  if (classifyProviderStatus(data.status) === 'pending') {
+    db.prepare('UPDATE payments SET provider_payload = ? WHERE id = ?').run(JSON.stringify(data).slice(0, 4000), payment.id);
+    return {
+      status: 'pending',
+      provider_status: data.status,
+      message: data.gateway_response
+        || (data.status === 'abandoned'
+          ? 'This payment was not completed. Nothing has been charged.'
+          : 'Waiting for your bank to confirm the transfer. This can take a few minutes.'),
+      payment,
+    };
+  }
+
   db.prepare("UPDATE payments SET status = 'failed', provider_payload = ? WHERE id = ?").run(JSON.stringify(data), payment.id);
   db.prepare("UPDATE orders SET payment_status = 'failed', updated_at = ? WHERE id = ?").run(now(), payment.order_id);
   event(payment.order_id, { type: 'payment_failed', message: 'Payment was not successful' });

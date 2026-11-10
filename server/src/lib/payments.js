@@ -153,7 +153,17 @@ export async function initPayment(order, { method = 'paystack', callbackPath = '
     db.prepare(
       'INSERT INTO payments (id,order_id,provider,reference,amount,status,method,created_at,verified_at) VALUES (?,?,?,?,?,?,?,?,?)'
     ).run(uid('pay'), order.id, 'wallet', ref, order.total, 'success', 'wallet', now(), now());
-    markOrderPaid(order.id, { provider: 'wallet', reference: ref, amount: order.total });
+    try {
+      markOrderPaid(order.id, { provider: 'wallet', reference: ref, amount: order.total });
+    } catch (e) {
+      // never keep the customer's money for a payment that did not take effect
+      db.prepare("UPDATE payments SET status = 'failed' WHERE reference = ?").run(ref);
+      walletEntry(order.customer_id, {
+        type: 'credit', amount: order.total, orderId: order.id,
+        description: `Returned — payment could not be applied to ${order.code}`,
+      });
+      throw bad('That payment could not be applied. Your money is back in your wallet — please try again or contact support.');
+    }
     return { method: 'wallet', reference: ref, authorization_url: null, paid: true };
   }
 
@@ -372,16 +382,40 @@ export function markOrderPaid(orderId, { provider, reference: ref, amount }) {
   notify(order.customer_id, { title: 'Payment confirmed', body: `Order ${order.code} is confirmed.`, kind: 'payment', orderId });
 
   const fresh = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+
+  /**
+   * Where the order goes next depends on why the money arrived. A personal
+   * shopping request that is waiting for approval is not a new order — the
+   * customer is paying the difference on a basket the shopper already picked, and
+   * the only thing left to do is approve the basket. Sending it back to
+   * "open for shoppers" was both impossible (the state machine refuses it) and
+   * wrong, and it left a paid customer staring at a stalled order.
+   */
   if (fresh.type === 'personal') {
-    transition(orderId, 'open_for_shoppers', {
-      actorRole: 'system',
-      note: 'Shopping request is live — finding the best shopper for you',
-    });
-    if (settingsAll().auto_offer_jobs) offerJob(orderId, 'shopper');
+    if (fresh.status === 'awaiting_approval') {
+      transition(orderId, 'approved', {
+        actorRole: 'system',
+        note: 'Extra payment received — the basket can be bought',
+      });
+      if (fresh.shopper_id) {
+        notify(fresh.shopper_id, {
+          title: `Basket approved — ${fresh.code}`,
+          body: `The customer paid the difference. You can buy the approved items now.`,
+          kind: 'job',
+          orderId,
+        });
+      }
+    } else if (['pending_payment', 'paid'].includes(fresh.status)) {
+      transition(orderId, 'open_for_shoppers', {
+        actorRole: 'system',
+        note: 'Shopping request is live — finding the best shopper for you',
+      });
+      if (settingsAll().auto_offer_jobs) offerJob(orderId, 'shopper');
+    }
   } else {
     transition(orderId, 'paid', { actorRole: 'system', note: 'Payment received — waiting for the store to accept' });
   }
-  return fresh;
+  return db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
 }
 
 /** Paystack webhook: signature validated, then processing is idempotent. */

@@ -76,7 +76,7 @@ const ACTOR_RULES = {
   shopper_assigned: ['shopper', 'admin'],
   shopping: ['shopper', 'admin'],
   awaiting_approval: ['shopper', 'admin'],
-  approved: ['customer', 'admin'],
+  approved: ['customer', 'admin', 'system'],
   purchased: ['shopper', 'admin'],
   ready_for_delivery: ['shopper', 'admin'],
   rider_assigned: ['rider', 'admin', 'system'],
@@ -513,6 +513,13 @@ const releaseTimer = setInterval(() => {
 }, 60_000);
 if (releaseTimer.unref) releaseTimer.unref();
 
+/** Everything the customer has actually paid on this order. */
+export const paidTotalFor = (orderId) =>
+  db.prepare("SELECT COALESCE(SUM(amount),0) t FROM payments WHERE order_id = ? AND status = 'success'").get(orderId).t;
+
+/** What is still owed — never the whole total when part of it is already paid. */
+export const amountDue = (order) => Math.max(0, money(order.total) - paidTotalFor(order.id));
+
 export function publicOrder(order, { includePrivate = false } = {}) {
   if (!order) return null;
   const items = orderItems(order.id);
@@ -529,6 +536,8 @@ export function publicOrder(order, { includePrivate = false } = {}) {
     rider: rider || null,
     store: store || null,
     status_label: orderLabel(order.status),
+    amount_paid: paidTotalFor(order.id),
+    amount_due: Math.max(0, money(order.total) - paidTotalFor(order.id)),
     timeline: orderEvents(order.id).map((e) => ({
       type: e.type,
       message: e.message,

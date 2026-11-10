@@ -1403,3 +1403,58 @@ test('41. a refund adds up, goes where the money can be spent, and never exceeds
   assert.equal(again.status, 400);
   assert.match(again.body.error, /already been refunded/i);
 });
+
+test('42. a basket that grew asks for the difference, not the whole price again', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const shopper = await login('shopper@buybuddy.ng');
+  await api('/api/worker/availability', { method: 'POST', token: shopper, body: { available: true } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+
+  const made = await api('/api/shopping/requests', {
+    method: 'POST', token: customer,
+    body: {
+      address_id: address.id,
+      items: [{ description: 'Bag of rice 5kg', qty: 1, target_price: 2000 }],
+      budget: 2500,
+      payment_method: 'wallet',
+    },
+  });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const orderId = made.body.order.id;
+  const originalTotal = made.body.order.total;
+
+  await api(`/api/worker/jobs/${orderId}/accept`, { method: 'POST', token: shopper });
+  await api(`/api/worker/jobs/${orderId}/start-shopping`, { method: 'POST', token: shopper });
+  const job = await api(`/api/worker/jobs/${orderId}`, { token: shopper });
+  const item = job.body.order.shopping_items[0];
+  await api(`/api/worker/jobs/${orderId}/items/${item.id}`, {
+    method: 'PATCH', token: shopper, body: { proposed_price: 3500, proposed_qty: 1, status: 'proposed' },
+  });
+  await api(`/api/worker/jobs/${orderId}/submit-for-approval`, { method: 'POST', token: shopper });
+
+  const approved = await api(`/api/orders/${orderId}/approvals`, {
+    method: 'POST', token: customer, body: { items: [{ id: item.id, action: 'approve' }] },
+  });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  assert.equal(approved.body.order.payment_status, 'pending', 'the extra is owed before shopping continues');
+  assert.equal(approved.body.order.amount_paid, originalTotal, 'we know exactly what has been paid');
+  const due = approved.body.order.amount_due;
+  assert.ok(due > 0, 'and exactly what is still owed');
+  assert.equal(approved.body.order.status, 'awaiting_approval', 'the order waits for the money, not a dead end');
+
+  const overpay = await api(`/api/orders/${orderId}/pay`, { method: 'POST', token: customer, body: { payment_method: 'wallet' } });
+  assert.equal(overpay.status, 200, JSON.stringify(overpay.body));
+  assert.equal(overpay.body.payment.method, 'wallet');
+  const paid = await api(`/api/orders/${orderId}`, { token: customer });
+  assert.equal(paid.body.order.payment_status, 'paid');
+  assert.equal(paid.body.order.amount_due, 0);
+  assert.equal(paid.body.order.amount_paid, paid.body.order.total, 'the total was reached once, not twice');
+  assert.equal(paid.body.order.status, 'approved', 'and the shopper can buy now');
+
+  const { db } = await import('../src/lib/db.js');
+  const charged = db.prepare("SELECT COALESCE(SUM(amount),0) t FROM payments WHERE order_id = ? AND status = 'success'").get(orderId).t;
+  assert.equal(charged, paid.body.order.total, 'the ledger says one total, not the total plus the difference');
+
+  const again = await api(`/api/orders/${orderId}/pay`, { method: 'POST', token: customer, body: { payment_method: 'wallet' } });
+  assert.equal(again.status, 400, 'and it cannot be charged a second time');
+});

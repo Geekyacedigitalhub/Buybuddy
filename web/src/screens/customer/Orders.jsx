@@ -270,16 +270,29 @@ export function OrderDetail() {
       {order.payment_status === 'pending' && order.status !== 'cancelled' && (
         <div className="card" style={{ background: 'var(--warn-soft)', borderColor: '#f0dfb4' }}>
           <div className="row-between wrap" style={{ gap: 10 }}>
-            <div>
-              <div className="strong">Payment required</div>
-              <div className="sub">Complete payment so your order can proceed.</div>
+            <div style={{ maxWidth: 340 }}>
+              <div className="strong">
+                {order.amount_paid > 0 ? `Pay the difference — ${naira(order.amount_due)}` : 'Payment required'}
+              </div>
+              <div className="sub">
+                {order.amount_paid > 0
+                  ? `You have paid ${naira(order.amount_paid)} of ${naira(order.total)}. Pay the rest and your shopper carries on straight away.`
+                  : 'Complete payment so your order can proceed.'}
+              </div>
             </div>
             <Button size="sm" onClick={() => act(async () => {
               const r = await api.post(`/api/orders/${order.id}/pay`, { payment_method: 'paystack' });
               if (r.payment?.sandbox) nav(`/pay/${r.payment.reference}`);
               else if (r.payment?.authorization_url) window.location.href = r.payment.authorization_url;
-            }, 'Payment started')}>Pay {naira(order.total)}</Button>
+            }, 'Payment started')}>
+              Pay {naira(order.amount_due || order.total)}
+            </Button>
           </div>
+          {order.amount_paid > 0 && (
+            <p className="tiny muted" style={{ marginTop: 10, marginBottom: 0 }}>
+              Only the difference is charged — you are never asked to pay for the same items twice.
+            </p>
+          )}
         </div>
       )}
 

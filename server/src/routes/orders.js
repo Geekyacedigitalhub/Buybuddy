@@ -13,6 +13,7 @@ import {
   transition,
   eligibleWorkers,
   whenLabel,
+  amountDue,
 } from '../lib/orders.js';
 import { initPayment, verifyPayment, refundPayment, verifyWalletTopup } from '../lib/payments.js';
 import { pointsEntry, pointsToDiscount, validateSchedule } from '../lib/growth.js';
@@ -620,8 +621,17 @@ router.post(
   asyncHandler(async (req, res) => {
     const order = loadOrderForUser(req);
     if (order.customer_id !== req.user.id) throw forbidden();
-    if (['paid', 'paid_cash'].includes(order.payment_status)) throw bad('This order is already paid.');
-    const payment = await initPayment({ ...order, __email: req.user.email }, { method: req.body?.payment_method || order.payment_method });
+    /*
+     * Charge what is still owed, not the whole total again. A "shop for me"
+     * basket that grew after approval has already been paid in part — sending the
+     * full price would take the customer's money twice for one order.
+     */
+    const due = amountDue(order);
+    if (due <= 0 || ['paid', 'paid_cash'].includes(order.payment_status)) throw bad('This order is already paid.');
+    const payment = await initPayment(
+      { ...order, total: due, __email: req.user.email },
+      { method: req.body?.payment_method || order.payment_method }
+    );
     res.json({ payment, order: publicOrder(db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id)) });
   })
 );

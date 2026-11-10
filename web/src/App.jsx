@@ -38,7 +38,6 @@ export const homeFor = (role) =>
 /* ---------------------------- customer shell ----------------------------- */
 
 function CustomerShell({ children }) {
-  useNavHeight();
   const { user } = useAuth();
   const { cart } = useCart();
   const nav = useNavigate();
@@ -125,10 +124,48 @@ function useNavHeight() {
   }, []);
 }
 
+/*
+ * The phone's own Back button. Without this, pressing Back inside a sheet —
+ * "Report a problem", a refund reason, the checkout confirm — closed the whole
+ * app instead of the sheet, and a customer lost what they had typed. Now Back
+ * closes whatever is open, then walks the history it came through, and only
+ * leaves the app from the top of the stack.
+ */
+function useAndroidBack() {
+  useEffect(() => {
+    if (!isNativeApp()) return undefined;
+    let handle;
+    let cancelled = false;
+    import('@capacitor/app')
+      .then(({ App: CapApp }) =>
+        CapApp.addListener('backButton', ({ canGoBack }) => {
+          const openSheet = document.querySelector('.modal-backdrop');
+          if (openSheet) {
+            // every sheet in the app closes on Escape, including the ask sheets
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return;
+          }
+          if (canGoBack && window.history.length > 1) {
+            window.history.back();
+            return;
+          }
+          CapApp.exitApp();
+        })
+      )
+      .then((h) => {
+        if (cancelled) h.remove();
+        else handle = h;
+      });
+    return () => {
+      cancelled = true;
+      handle?.remove();
+    };
+  }, []);
+}
+
 /* ------------------------------ worker shell ----------------------------- */
 
 function WorkerShell({ children }) {
-  useNavHeight();
   const { user, logout } = useAuth();
   const loc = useLocation();
   const nav = useNavigate();
@@ -180,6 +217,10 @@ function LoginRoute() {
 }
 
 export default function App() {
+  // Registered once, for every role's shell: the nav's height (the product buy
+  // bar sits on it) and the phone's Back button.
+  useNavHeight();
+  useAndroidBack();
   // Installed app with no server chosen yet: ask once, before anything fetches.
   const needsServer = isNativeApp() && !hasApiBase();
 

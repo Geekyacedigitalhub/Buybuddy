@@ -239,7 +239,38 @@ function Orders() {
       </div>
 
       {!data ? <Loading /> : (
-        <div className="card card-flush table-wrap">
+        <>
+        {/* Eight columns cannot survive a 390 px phone — codes and naira broke into
+            two characters a line. Phones get cards, desks keep the table. */}
+        <div className="col narrow-only" style={{ gap: 10 }}>
+          {data.orders.length === 0 && <Empty icon="receipt" title="No orders match these filters" />}
+          {data.orders.map((o) => (
+            <div key={o.id} className="tile">
+              <div className="row-between">
+                <span className="mono strong">{o.code}</span>
+                <span className="mono strong">{naira(o.total)}</span>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 2 }}>
+                {o.customer?.name || 'Customer'} · {o.customer?.phone || 'no phone'} · {timeAgo(o.created_at)}
+              </div>
+              <div style={{ marginTop: 6 }}>
+                {o.store?.name ? <span className="sub">{o.store.name}</span> : <Badge tone="badge-orange">Personal shopping</Badge>}
+              </div>
+              <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>
+                <Badge tone={o.payment_status === 'paid' ? 'badge-ok' : o.payment_status === 'failed' ? 'badge-danger' : 'badge-warn'}>{o.payment_status}</Badge>
+                <StatusBadge status={o.status} />
+              </div>
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                {o.shopper ? `Shopper: ${o.shopper}` : 'No shopper'}{o.rider ? ` · Rider: ${o.rider}` : ''}
+              </div>
+              <div className="row" style={{ gap: 6, marginTop: 10, justifyContent: 'flex-end' }}>
+                <Button size="sm" variant="ghost" onClick={() => open(o)}>Manage</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card card-flush table-wrap wide-only">
           <table className="table">
             <thead><tr><th>Order</th><th>Customer</th><th>Store / type</th><th>Total</th><th>Payment</th><th>Status</th><th>Workers</th><th /></tr></thead>
             <tbody>
@@ -258,6 +289,7 @@ function Orders() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? `Order ${detail.order.code}` : ''}>

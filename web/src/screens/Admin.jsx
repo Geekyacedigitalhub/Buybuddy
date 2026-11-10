@@ -1059,7 +1059,9 @@ function Support() {
                   {t.refunded_amount > 0 && <Badge tone="badge-ok">{naira(t.refunded_amount)} already refunded</Badge>}
                 </div>
                 <div className="tiny" style={{ marginTop: 3 }}>
-                  The customer says {t.subject.toLowerCase()}. Approving pays it back through the normal refund path — card back to card, wallet back to wallet — and caps it at what is left on the order.
+                  Paying this back goes through the normal refund path — card back to the card, wallet back to the
+                  wallet — and is capped at what is still unrefunded on {t.order_id ? 'the order' : 'the order'}.
+                  Nothing leaves until you press the button.
                 </div>
               </div>
             ) : null}

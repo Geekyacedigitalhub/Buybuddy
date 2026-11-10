@@ -157,7 +157,6 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <AskHost />
       <AuthProvider>
         <CartProvider>
           {needsServer ? <ServerSetup /> : (
@@ -202,6 +201,7 @@ export default function App() {
           )}
         </CartProvider>
       </AuthProvider>
+      <AskHost />
     </ToastProvider>
   );
 }

@@ -71,6 +71,7 @@ export function AskHost() {
     || (req.mode === 'confirm' ? 'Yes, continue' : 'Save');
 
   return (
+    <div className="ask-layer">
     <Modal
       open
       onClose={() => close(req.mode === 'confirm' ? false : null)}
@@ -142,5 +143,6 @@ export function AskHost() {
         </div>
       )}
     </Modal>
+    </div>
   );
 }

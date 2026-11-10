@@ -814,3 +814,8 @@ html, body { overflow-x: hidden; }
   100% { box-shadow: 0 0 0 0 rgba(18, 164, 107, 0); }
 }
 .badge-muted { background: #EEF1EF; color: var(--ink-2); }
+
+/* The ask sheet can be opened from inside another modal (a refund from an order
+   detail, for example). Same z-index meant the sheet rendered underneath it and
+   the button looked dead, so the ask layer always sits on top. */
+.ask-layer .modal-backdrop { z-index: 200; }

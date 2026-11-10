@@ -319,6 +319,13 @@ router.post(
 
 /* ----------------------------- rider: delivery ---------------------------- */
 
+/*
+ * PICKUP — the moment the bag changes hands. A photo here is the rider's proof of
+ * what they were given, and the customer's proof of what left the shop, so a
+ * "this is not what I ordered" argument can be settled with a picture instead of
+ * a phone call. Optional at the API level (a broken camera must never strand an
+ * order) but the rider app asks for it on every pickup.
+ */
 router.post(
   '/worker/jobs/:orderId/pickup',
   requireAuth,
@@ -326,8 +333,18 @@ router.post(
   asyncHandler(async (req, res) => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.orderId);
     if (!order || order.rider_id !== req.user.id) throw forbidden('This delivery is not assigned to you.');
-    const updated = transition(order.id, 'picked_up', { actor: req.user, actorRole: 'rider', note: req.body?.note || 'Order picked up' });
-    res.json({ order: publicOrder(updated) });
+    const photo = req.body?.photo ? String(req.body.photo).slice(0, 3_000_000) : null;
+    const updated = transition(order.id, 'picked_up', {
+      actor: req.user,
+      actorRole: 'rider',
+      note: req.body?.note || (photo ? 'Order picked up — handover photo taken' : 'Order picked up'),
+    });
+    if (photo) {
+      db.prepare('INSERT INTO receipts (id,order_id,uploaded_by,file_name,mime,data_url,note,created_at) VALUES (?,?,?,?,?,?,?,?)').run(
+        uid('rcp'), order.id, req.user.id, 'handover', 'image', photo, 'Handover photo — bag collected', now()
+      );
+    }
+    res.json({ order: publicOrder(updated), photo_saved: Boolean(photo) });
   })
 );
 
@@ -531,8 +548,20 @@ router.post(
   asyncHandler(async (req, res) => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.orderId);
     if (!order || order.shopper_id !== req.user.id) throw forbidden();
+    const photo = req.body?.photo ? String(req.body.photo).slice(0, 3_000_000) : null;
+    if (photo) {
+      db.prepare('INSERT INTO receipts (id,order_id,uploaded_by,file_name,mime,data_url,note,created_at) VALUES (?,?,?,?,?,?,?,?)').run(
+        uid('rcp'), order.id, req.user.id, 'handover', 'image', photo, 'Handover photo — bag given to the rider', now()
+      );
+      event(order.id, {
+        actorId: req.user.id,
+        actorRole: 'shopper',
+        type: 'handover_photo',
+        message: 'Shopper photographed the bag before handing it over',
+      });
+    }
     const count = offerJob(order.id, 'rider');
-    res.json({ offered_riders: count });
+    res.json({ offered_riders: count, photo_saved: Boolean(photo) });
   })
 );
 

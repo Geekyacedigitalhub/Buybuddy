@@ -675,16 +675,47 @@ router.post(
   })
 );
 
+/*
+ * Resolving a claim usually means giving money back. Refunding from the same
+ * click means the ticket and the money cannot drift apart: the office types the
+ * amount (prefilled with what the customer asked for), it is paid through the
+ * normal refund path — so the cap, the card-vs-wallet rule and the order history
+ * all still apply — and the ticket records exactly what went out.
+ */
 router.post(
   '/admin/tickets/:id/resolve',
   asyncHandler(async (req, res) => {
     const ticket = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(req.params.id);
     if (!ticket) throw notFound('Ticket not found');
+    if (ticket.status === 'resolved' && !req.body?.refund_amount) throw bad('This ticket is already resolved.');
+
+    let refund = null;
+    const refundAmount = Math.round(Number(req.body?.refund_amount || 0));
+    if (refundAmount > 0) {
+      if (!ticket.order_id) throw bad('This ticket is not linked to an order, so there is nothing to refund.');
+      const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(ticket.order_id);
+      if (!order) throw bad('The order on this ticket no longer exists.');
+      refund = await refundPayment(order.id, {
+        amount: refundAmount,
+        reason: `Support claim ${ticket.id}: ${ticket.subject}`,
+        actor: req.user,
+      });
+      db.prepare('UPDATE support_tickets SET refunded_amount = COALESCE(refunded_amount, 0) + ? WHERE id = ?')
+        .run(refundAmount, ticket.id);
+      notify(ticket.customer_id, {
+        title: `Refund sent — ${order.code}`,
+        body: `₦${refundAmount.toLocaleString()} has gone back to you for “${ticket.subject}”.`,
+        kind: 'payment',
+        orderId: order.id,
+      });
+      audit(req, 'order.refund', 'order', order.id, { ...refund, ticket_id: ticket.id });
+    }
+
     db.prepare("UPDATE support_tickets SET status = 'resolved', resolution = ?, updated_at = ? WHERE id = ?").run(
-      req.body?.resolution || 'Resolved', now(), ticket.id
+      req.body?.resolution || (refund ? `Refunded ₦${refundAmount.toLocaleString()}` : 'Resolved'), now(), ticket.id
     );
-    audit(req, 'ticket.resolve', 'ticket', ticket.id, { resolution: req.body?.resolution });
-    res.json({ ok: true });
+    audit(req, 'ticket.resolve', 'ticket', ticket.id, { resolution: req.body?.resolution, refund_amount: refundAmount || 0 });
+    res.json({ ok: true, refund });
   })
 );
 

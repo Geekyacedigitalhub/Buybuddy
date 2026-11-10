@@ -5,6 +5,7 @@ import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress, assetUr
 /* Leaflet is ~45 kB of map code that only one screen needs, so it loads on
    demand: the rest of the app stays light and the map still appears instantly. */
 const DeliveryMap = React.lazy(() => import('../../components/DeliveryMap.jsx'));
+import PhotoPicker from '../../components/PhotoPicker.jsx';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
   useAuth, useToast,
@@ -85,7 +86,7 @@ export function OrderDetail() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [report, setReport] = useState({ category: 'order', message: '' });
+  const [report, setReport] = useState({ category: 'order', message: '', items: [], amount: '', photo: null });
   const [reportSent, setReportSent] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
   const [rating, setRating] = useState(5);
@@ -116,11 +117,16 @@ export function OrderDetail() {
   const sendReport = async () => {
     setBusy(true);
     try {
+      const claim = Number(report.amount || 0);
       await api.post('/api/support/tickets', {
-        subject: `Problem with ${order.code}`,
+        subject: report.items.length
+          ? `${report.items.map((i) => i.name).join(', ')} — ${order.code}`
+          : `Problem with ${order.code}`,
         message: report.message,
         category: report.category,
         order_id: order.id,
+        ...(claim > 0 ? { claim_amount: claim, claim_items: report.items.map((i) => i.id) } : {}),
+        ...(report.photo ? { photo: report.photo } : {}),
       });
       setReportSent(true);
       toast.success('Support has your report');
@@ -194,7 +200,7 @@ export function OrderDetail() {
             <button
               className="btn btn-ghost btn-sm"
               style={{ fontSize: 12, padding: '4px 8px' }}
-              onClick={() => { setReportSent(false); setReport({ category: order.type === 'personal' ? 'order' : 'order', message: '' }); setReportOpen(true); }}
+              onClick={() => { setReportSent(false); setReport({ category: 'order', message: '', items: [], amount: '', photo: null }); setReportOpen(true); }}
             >
               <Icon name="chat" size={13} /> Report a problem
             </button>
@@ -511,6 +517,13 @@ export function OrderDetail() {
               <strong>Support has it.</strong> They can see this order and everything on it — totals, the shopper,
               the rider and the receipt. Reply to them from <strong>Help &amp; support</strong> and you will get an
               answer in the app and by SMS.
+              {Number(report.amount) > 0 && (
+                <>
+                  <br /><br />
+                  You asked for <strong>{naira(Number(report.amount))}</strong> back. Support checks it against the
+                  order and pays it to the same place you paid from. You do not need to chase it.
+                </>
+              )}
             </div>
             <Button block onClick={() => setReportOpen(false)}>Close</Button>
           </div>
@@ -521,22 +534,72 @@ export function OrderDetail() {
             </p>
             <Field label="What went wrong?">
               <select className="select" value={report.category} onChange={(e) => setReport({ ...report, category: e.target.value })}>
-                <option value="order">Wrong or missing item</option>
-                <option value="delivery">Late, damaged or undelivered</option>
+                <option value="order">Wrong, missing or damaged item</option>
+                <option value="delivery">Late or not delivered</option>
                 <option value="payment">I was charged wrongly, or a refund is missing</option>
                 <option value="general">Something else</option>
               </select>
             </Field>
+
+            {['delivered', 'completed'].includes(order.status) && (order.items || []).length > 0 && (
+              <Field label="Which items?" hint="Tap the ones with the problem. Leave empty if it is the whole order.">
+                <div className="col" style={{ gap: 6 }}>
+                  {(order.items || []).map((it) => {
+                    const on = report.items.some((x) => x.id === it.id);
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        className={`tile ${on ? 'active' : ''}`}
+                        style={{ textAlign: 'left', border: on ? '1.5px solid var(--green-600)' : '1px solid var(--line)', background: on ? 'var(--green-50)' : '#fff', cursor: 'pointer' }}
+                        onClick={() => {
+                          const items = on ? report.items.filter((x) => x.id !== it.id) : [...report.items, { id: it.id, name: it.name, value: it.price * it.qty }];
+                          const amount = items.reduce((sum, x) => sum + x.value, 0);
+                          setReport({ ...report, items, amount: amount ? String(amount) : '' });
+                        }}
+                      >
+                        <div className="row-between">
+                          <span className="strong" style={{ fontSize: 13 }}>{it.qty} × {it.name}</span>
+                          <span className="mono">{naira(it.price * it.qty)}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
+
+            {['delivered', 'completed'].includes(order.status) && (
+              <Field label="How much should come back? (₦)" hint="We prefill it from the items you picked. Support checks it and pays the same way you paid.">
+                <Input
+                  type="number"
+                  value={report.amount}
+                  onChange={(e) => setReport({ ...report, amount: e.target.value })}
+                  placeholder={String(order.total)}
+                />
+              </Field>
+            )}
+
             <Field label="In your words" hint="The more detail, the faster we can fix it.">
               <Textarea
-                rows={5}
+                rows={4}
                 value={report.message}
                 onChange={(e) => setReport({ ...report, message: e.target.value })}
                 placeholder="For example: the rice came open and the milk was missing."
               />
             </Field>
+
+            <PhotoPicker
+              value={report.photo}
+              onChange={(url) => setReport({ ...report, photo: url })}
+              label="Photo"
+              hint="A picture of the bag or the item settles it fastest."
+              size={96}
+              onError={(m) => toast.error(m)}
+            />
+
             <Button block disabled={busy || report.message.trim().length < 5} onClick={sendReport}>
-              {busy ? 'Sending…' : 'Send to support'}
+              {busy ? 'Sending…' : Number(report.amount) > 0 ? `Ask for ${naira(Number(report.amount))} back` : 'Send to support'}
             </Button>
           </div>
         )}

@@ -10,8 +10,8 @@ import {
   createOtp,
   consumeOtp,
 } from '../lib/auth.js';
-import { asyncHandler, bad, normalisePhone, notFound, now, requireFields, sanitizeUser, uid } from '../lib/util.js';
-import { notify, settingsAll, walletBalance, walletEntry, audit } from '../lib/settings.js';
+import { asyncHandler, bad, forbidden, normalisePhone, notFound, now, requireFields, sanitizeUser, uid } from '../lib/util.js';
+import { notify, settingsAll, walletBalance, walletEntry, audit, event } from '../lib/settings.js';
 import { ensureReferralCode, linkReferral } from '../lib/growth.js';
 import { sendSms } from '../lib/sms.js';
 import { initWalletTopup } from '../lib/payments.js';
@@ -419,23 +419,76 @@ router.get(
   })
 );
 
+/*
+ * Reporting a problem on a delivered order is a claim, not just a message.
+ *
+ * The customer says which items were wrong or missing and how much they want
+ * back. We check it is their order, that the money was actually captured, and
+ * that the ask fits inside what is left to refund — then the office sees the
+ * number next to the ticket and pays it with one click. The claim is only a
+ * request: nothing is refunded until an admin approves it.
+ */
 router.post(
   '/support/tickets',
   requireAuth,
   asyncHandler(async (req, res) => {
     requireFields(req.body || {}, ['subject', 'message']);
+    const orderId = req.body.order_id || null;
+    let claimAmount = null;
+    let claimItems = null;
+
+    if (orderId) {
+      const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+      if (!order) throw notFound('That order does not exist.');
+      if (order.customer_id !== req.user.id) throw forbidden('That order is not yours.');
+
+      const asked = Math.round(Number(req.body.claim_amount || 0));
+      if (asked > 0) {
+        if (!['delivered', 'completed'].includes(order.status)) {
+          throw bad(
+            `You can ask for money back once ${order.code} has arrived — it is still ${String(order.status).replace(/_/g, ' ')}. ` +
+            'Report it without an amount now and support will still see it.'
+          );
+        }
+        if (!['paid', 'paid_cash', 'refunded'].includes(order.payment_status) && order.payment_status !== 'paid') {
+          throw bad('This order was never charged, so there is nothing to refund.');
+        }
+        const captured = db
+          .prepare("SELECT * FROM payments WHERE order_id = ? AND status IN ('success','refunded')")
+          .all(orderId);
+        const paidTotal = captured.reduce((s, p) => s + p.amount, 0) || order.total;
+        const givenBack = captured.reduce((s, p) => s + (p.refunded_amount || 0), 0);
+        const remaining = Math.max(0, paidTotal - givenBack);
+        if (remaining <= 0) throw bad(`Everything on ${order.code} has already been refunded.`);
+        if (asked > remaining) {
+          throw bad(
+            `You asked for ₦${asked.toLocaleString()}, but only ₦${remaining.toLocaleString()} of ${order.code} ` +
+            'is left to refund. Lower the amount and send it again.'
+          );
+        }
+        claimAmount = asked;
+      }
+
+      if (Array.isArray(req.body.claim_items) && req.body.claim_items.length) {
+        claimItems = JSON.stringify(req.body.claim_items.slice(0, 30));
+      }
+    }
+
     const id = uid('tkt');
     db.prepare(
-      `INSERT INTO support_tickets (id,order_id,customer_id,subject,category,priority,status,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO support_tickets (id,order_id,customer_id,subject,category,priority,status,claim_amount,claim_items,photo,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
     ).run(
       id,
-      req.body.order_id || null,
+      orderId,
       req.user.id,
       req.body.subject,
       req.body.category || 'general',
-      req.body.priority || 'normal',
+      req.body.priority || (claimAmount ? 'high' : 'normal'),
       'open',
+      claimAmount,
+      claimItems,
+      req.body.photo ? String(req.body.photo).slice(0, 3_000_000) : null,
       now(),
       now()
     );
@@ -447,6 +500,14 @@ router.post(
       req.body.message,
       now()
     );
+    if (orderId) {
+      event(orderId, {
+        actorId: req.user.id,
+        actorRole: req.user.role,
+        type: 'problem_reported',
+        message: claimAmount ? `Problem reported — asking for ₦${claimAmount.toLocaleString()} back` : 'Problem reported to support',
+      });
+    }
     res.status(201).json({ ticket: db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) });
   })
 );

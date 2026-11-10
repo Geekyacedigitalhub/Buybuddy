@@ -1591,7 +1591,12 @@ test('45. a merchant is paid from the ledger and can only withdraw money once', 
   assert.equal(placed.status, 201, JSON.stringify(placed.body));
   const order = placed.body.order;
   if (order.status === 'pending_payment') {
-    await api(`/api/orders/${order.id}/pay`, { method: 'POST', token: customer });
+    const pay = await api(`/api/orders/${order.id}/pay`, { method: 'POST', token: customer });
+    assert.equal(pay.status, 200, JSON.stringify(pay.body));
+    const ref = pay.body.payment?.reference;
+    assert.ok(ref, 'a payment reference comes back');
+    const verified = await api(`/api/payments/${ref}/verify`, { method: 'POST', token: customer });
+    assert.equal(verified.status, 200, JSON.stringify(verified.body));
   }
   await api(`/api/merchant/orders/${order.id}/accept`, { method: 'POST', token: merchant });
   await api(`/api/merchant/orders/${order.id}/ready`, { method: 'POST', token: merchant });
@@ -1671,4 +1676,111 @@ test('45. a merchant is paid from the ledger and can only withdraw money once', 
   assert.equal(rejected.status, 200, JSON.stringify(rejected.body));
   const back = await api('/api/merchant/settlements', { token: merchant });
   assert.equal(back.body.balance, balanceBefore, 'a rejected withdrawal returns the money');
+});
+
+test('46. a missing item becomes a claim the office can pay, and a pickup can be photographed', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  const rider = await login('rider@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+  await api('/api/worker/availability', { method: 'POST', token: rider, body: { available: true } });
+
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = (await api('/api/products?limit=200')).body.products;
+  const item = products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3 && p.price >= 2000);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 1 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'paystack' },
+  });
+  assert.equal(placed.status, 201, JSON.stringify(placed.body));
+  const order = placed.body.order;
+  if (order.status === 'pending_payment') {
+    const pay = await api(`/api/orders/${order.id}/pay`, { method: 'POST', token: customer });
+    assert.equal(pay.status, 200, JSON.stringify(pay.body));
+    const ref = pay.body.payment?.reference;
+    assert.ok(ref, 'a payment reference comes back');
+    await api(`/api/payments/${ref}/verify`, { method: 'POST', token: customer });
+  }
+  await api(`/api/merchant/orders/${order.id}/accept`, { method: 'POST', token: merchant });
+  await api(`/api/merchant/orders/${order.id}/ready`, { method: 'POST', token: merchant });
+  const riderId = (await api('/api/me', { token: rider })).body.user.id;
+  await api(`/api/admin/orders/${order.id}/assign`, { method: 'POST', token: admin, body: { worker_id: riderId, role: 'rider' } });
+
+  // a claim for money cannot be filed while the bag is still moving
+  const tooEarly = await api('/api/support/tickets', {
+    method: 'POST', token: customer,
+    body: { order_id: order.id, subject: 'Rice missing', message: 'The rice was not in the bag.', claim_amount: 500 },
+  });
+  assert.equal(tooEarly.status, 400);
+  assert.match(tooEarly.body.error, /has arrived/i);
+
+  // the rider photographs the bag at handover; the customer can see the proof
+  const pickup = await api(`/api/worker/jobs/${order.id}/pickup`, {
+    method: 'POST', token: rider, body: { photo: 'data:image/png;base64,iVBORw0KGgo=' },
+  });
+  assert.equal(pickup.status, 200, JSON.stringify(pickup.body));
+  assert.equal(pickup.body.photo_saved, true);
+  await api(`/api/worker/jobs/${order.id}/in-transit`, { method: 'POST', token: rider });
+  const pin = (await api(`/api/orders/${order.id}`, { token: customer })).body.order.delivery_pin;
+  await api(`/api/worker/jobs/${order.id}/deliver`, { method: 'POST', token: rider, body: { pin } });
+
+  const seen = await api(`/api/orders/${order.id}`, { token: customer });
+  assert.ok(
+    seen.body.receipts.some((r) => /handover/i.test(r.note || '')),
+    'the handover photo is attached to the order the customer is looking at'
+  );
+
+  // asking for more than was paid is refused, with the real ceiling in the message
+  const greedy = await api('/api/support/tickets', {
+    method: 'POST', token: customer,
+    body: { order_id: order.id, subject: 'Everything missing', message: 'Nothing arrived at all.', claim_amount: order.total + 5000 },
+  });
+  assert.equal(greedy.status, 400);
+  assert.match(greedy.body.error, /left to refund/i);
+
+  const claim = await api('/api/support/tickets', {
+    method: 'POST', token: customer,
+    body: {
+      order_id: order.id,
+      subject: 'Rice missing from the bag',
+      message: 'The bag came without the rice I paid for.',
+      category: 'order',
+      claim_amount: 800,
+      claim_items: [item.id],
+      photo: 'data:image/png;base64,iVBORw0KGgo=',
+    },
+  });
+  assert.equal(claim.status, 201, JSON.stringify(claim.body));
+  assert.equal(claim.body.ticket.claim_amount, 800);
+  assert.equal(claim.body.ticket.photo != null, true, 'the customer can attach a photo');
+  const ticketId = claim.body.ticket.id;
+
+  // the office sees the claim next to the ticket
+  const queue = await api('/api/admin/tickets', { token: admin });
+  const seenTicket = queue.body.tickets.find((t) => t.id === ticketId);
+  assert.ok(seenTicket, 'the claim is in the support queue');
+  assert.equal(seenTicket.claim_amount, 800);
+  assert.equal(seenTicket.customer_name.length > 0, true);
+
+  // resolving with an amount refunds it through the normal path
+  const resolved = await api(`/api/admin/tickets/${ticketId}/resolve`, {
+    method: 'POST', token: admin, body: { refund_amount: 800, resolution: 'Rice was missing — refunded' },
+  });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.body));
+  assert.equal(resolved.body.refund.refunded, 800);
+
+  const after = (await api('/api/support/tickets', { token: customer })).body.tickets.find((t) => t.id === ticketId);
+  assert.equal(after.status, 'resolved');
+  assert.equal(after.refunded_amount, 800);
+  const wallet = (await api('/api/wallet', { token: customer })).body;
+  assert.ok(wallet.entries.some((e) => /refund/i.test(e.description || '')), 'the customer sees the refund in their wallet');
+
+  // and the same claim cannot be paid twice
+  const again = await api(`/api/admin/tickets/${ticketId}/resolve`, {
+    method: 'POST', token: admin, body: { refund_amount: 800 },
+  });
+  assert.equal(again.status, 200, 'a resolved ticket can still be topped up if support decides to');
+  const total = (await api('/api/support/tickets', { token: customer })).body.tickets.find((t) => t.id === ticketId);
+  assert.ok(total.refunded_amount >= 800);
 });

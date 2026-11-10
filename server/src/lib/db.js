@@ -308,6 +308,12 @@ export function migrate() {
   ensureColumn('orders', 'released_at', 'TEXT');
   // money reserved out of a worker's wallet when they ask for a withdrawal
   ensureColumn('payouts', 'held', 'INTEGER NOT NULL DEFAULT 0');
+  // a support ticket that is really a claim: which items, how much is asked for,
+  // and how much has actually gone back — so a refund can never exceed the claim
+  ensureColumn('support_tickets', 'claim_amount', 'INTEGER');
+  ensureColumn('support_tickets', 'claim_items', 'TEXT');
+  ensureColumn('support_tickets', 'photo', 'TEXT');
+  ensureColumn('support_tickets', 'refunded_amount', 'INTEGER NOT NULL DEFAULT 0');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL');
 }
 

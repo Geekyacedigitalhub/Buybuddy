@@ -6,6 +6,7 @@ import {
   useAuth, useToast,
 } from '../lib/ui.jsx';
 import LiveLocation from '../components/LiveLocation.jsx';
+import PhotoPicker from '../components/PhotoPicker.jsx';
 
 export default function WorkerApp() {
   return (
@@ -265,6 +266,8 @@ function TaskDetail() {
     load();
   };
 
+  const [pickupPhoto, setPickupPhoto] = useState(null);
+
   const steps = isShopper
     ? [
       { when: ['shopper_assigned'], label: 'Start shopping', fn: () => api.post(`/api/worker/jobs/${order.id}/start-shopping`, {}) },
@@ -272,7 +275,7 @@ function TaskDetail() {
       { when: ['approved'], label: 'Mark as purchased', fn: () => api.post(`/api/worker/jobs/${order.id}/purchased`, {}) },
     ]
     : [
-      { when: ['rider_assigned', 'ready_for_pickup'], label: 'Confirm pickup', fn: () => api.post(`/api/worker/jobs/${order.id}/pickup`, {}) },
+      { when: ['rider_assigned', 'ready_for_pickup'], label: 'Confirm pickup', photo: true, fn: () => api.post(`/api/worker/jobs/${order.id}/pickup`, { photo: pickupPhoto || undefined, note: pickupPhoto ? undefined : 'Order picked up — no photo taken' }) },
       { when: ['picked_up'], label: 'Start delivery (in transit)', fn: () => api.post(`/api/worker/jobs/${order.id}/in-transit`, {}) },
     ];
   const step = steps.find((s) => s.when.includes(order.status));
@@ -362,6 +365,24 @@ function TaskDetail() {
 
       {isRider && ['rider_assigned', 'picked_up', 'in_transit'].includes(order.status) && (
         <LiveLocation orderId={order.id} status={order.status} />
+      )}
+
+      {step?.photo && (
+        <div className="card col" style={{ gap: 10, borderColor: 'var(--green-200)' }}>
+          <div className="h3">Photo of the bag</div>
+          <div className="sub">
+            One picture now is your proof — and the customer's — of exactly what you collected. If anyone says
+            something was missing or wrong, this photo settles it in seconds.
+          </div>
+          <PhotoPicker
+            value={pickupPhoto}
+            onChange={setPickupPhoto}
+            label="Handover photo"
+            hint="Point the camera at the sealed bags before you leave."
+            size={96}
+            onError={(m) => toast.error(m)}
+          />
+        </div>
       )}
 
       <div className="card col" style={{ gap: 10 }}>

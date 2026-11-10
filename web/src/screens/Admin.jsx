@@ -1005,6 +1005,8 @@ function Marketing() {
 function Support() {
   const [tickets, setTickets] = useState(null);
   const [reply, setReply] = useState({});
+  const [refund, setRefund] = useState({});
+  const [busy, setBusy] = useState({});
   const toast = useToast();
   const load = () => api.get('/api/admin/tickets').then((r) => setTickets(r.tickets)).catch(() => setTickets([]));
   useEffect(() => { load(); }, []);
@@ -1016,10 +1018,20 @@ function Support() {
     toast.success('Reply sent');
     load();
   };
-  const resolve = async (t) => {
-    await api.post(`/api/admin/tickets/${t.id}/resolve`, { resolution: 'Resolved by support' });
-    toast.success('Ticket resolved');
-    load();
+  const resolve = async (t, withRefund) => {
+    const amount = Number(refund[t.id] || 0);
+    if (withRefund && !(amount > 0)) { toast.error('Enter the amount to refund first.'); return; }
+    setBusy({ ...busy, [t.id]: true });
+    try {
+      await api.post(`/api/admin/tickets/${t.id}/resolve`, {
+        resolution: withRefund
+          ? `Refunded ₦${amount.toLocaleString()} — ${t.subject}`
+          : 'Resolved by support',
+        ...(withRefund ? { refund_amount: amount } : {}),
+      });
+      toast.success(withRefund ? `₦${amount.toLocaleString()} refunded and ticket closed` : 'Ticket resolved');
+      load();
+    } catch (e) { toast.error(e.message); } finally { setBusy({ ...busy, [t.id]: false }); }
   };
 
   if (!tickets) return <Loading block />;
@@ -1040,6 +1052,22 @@ function Support() {
                 <StatusBadge status={t.status} />
               </div>
             </div>
+            {t.claim_amount ? (
+              <div className="card" style={{ marginTop: 10, background: 'var(--orange-soft)', boxShadow: 'none' }}>
+                <div className="row-between">
+                  <span className="strong" style={{ fontSize: 13 }}>Refund requested: {naira(t.claim_amount)}</span>
+                  {t.refunded_amount > 0 && <Badge tone="badge-ok">{naira(t.refunded_amount)} already refunded</Badge>}
+                </div>
+                <div className="tiny" style={{ marginTop: 3 }}>
+                  The customer says {t.subject.toLowerCase()}. Approving pays it back through the normal refund path — card back to card, wallet back to wallet — and caps it at what is left on the order.
+                </div>
+              </div>
+            ) : null}
+            {t.photo && (
+              <a href={t.photo} target="_blank" rel="noreferrer" className="chip" style={{ marginTop: 8 }}>
+                <Icon name="receipt" size={13} /> Customer's photo
+              </a>
+            )}
             <div className="col" style={{ gap: 6, marginTop: 10 }}>
               {t.messages.map((m) => (
                 <div key={m.id} style={{ background: m.sender_role === 'admin' ? 'var(--green-50)' : '#f7f9f7', padding: '8px 11px', borderRadius: 10, fontSize: 13 }}>
@@ -1048,11 +1076,27 @@ function Support() {
               ))}
             </div>
             {t.status !== 'resolved' && (
-              <div className="row" style={{ gap: 8, marginTop: 10 }}>
-                <Input value={reply[t.id] || ''} onChange={(e) => setReply({ ...reply, [t.id]: e.target.value })} placeholder="Reply to the customer…" />
-                <Button size="sm" onClick={() => send(t)}>Send</Button>
-                <Button size="sm" variant="ghost" onClick={() => resolve(t)}>Resolve</Button>
-              </div>
+              <>
+                <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                  <Input value={reply[t.id] || ''} onChange={(e) => setReply({ ...reply, [t.id]: e.target.value })} placeholder="Reply to the customer…" />
+                  <Button size="sm" onClick={() => send(t)}>Send</Button>
+                  <Button size="sm" variant="ghost" onClick={() => resolve(t, false)} disabled={busy[t.id]}>Resolve</Button>
+                </div>
+                {t.order_id && (
+                  <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                    <Input
+                      type="number"
+                      value={refund[t.id] ?? (t.claim_amount || '')}
+                      onChange={(e) => setRefund({ ...refund, [t.id]: e.target.value })}
+                      placeholder="Amount to refund (₦)"
+                      style={{ maxWidth: 190 }}
+                    />
+                    <Button size="sm" onClick={() => resolve(t, true)} disabled={busy[t.id]}>
+                      {busy[t.id] ? 'Refunding…' : 'Refund & resolve'}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
             {t.resolution && <div className="tiny muted" style={{ marginTop: 6 }}>Resolution: {t.resolution}</div>}
           </div>

@@ -119,7 +119,30 @@ export const downloadFile = async (path) => {
  * uses: it keeps the auth token in the request instead of in a URL, so a receipt
  * link cannot be forwarded to someone who should not have the order.
  */
-export const saveFile = (blob, filename) => {
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+/*
+ * The phone app is a WebView, and an Android WebView has no download manager:
+ * `a.download` on a blob silently does nothing there. So on the phone the file
+ * is written to the app's cache and handed to the system share sheet, which is
+ * where "save to Files", Drive, WhatsApp and every PDF reader already live.
+ * In a browser the normal anchor download still runs.
+ */
+export const saveFile = async (blob, filename) => {
+  if (isNativeApp()) {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    const { Share } = await import('@capacitor/share');
+    const data = await blobToBase64(blob);
+    const written = await Filesystem.writeFile({ path: filename, data, directory: Directory.Cache, recursive: true });
+    await Share.share({ title: filename, url: written.uri, dialogTitle: 'Save or send this' });
+    return written.uri;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -127,6 +150,7 @@ export const saveFile = (blob, filename) => {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  return filename;
 };
 
 export const downloadAndSave = async (path, filename) => {

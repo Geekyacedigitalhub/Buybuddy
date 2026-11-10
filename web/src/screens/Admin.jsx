@@ -10,6 +10,7 @@ import Shell, { Bars, Kpi } from '../components/Shell.jsx';
 
 const NAV = [
   { to: '/admin', label: 'Overview', icon: 'chart', end: true },
+  { to: '/admin/today', label: 'Today', icon: 'clock' },
   { section: 'Operations' },
   { to: '/admin/orders', label: 'Orders', icon: 'receipt' },
   { to: '/admin/people', label: 'Customers & people', icon: 'user' },
@@ -30,6 +31,7 @@ export default function AdminApp() {
   return (
     <Routes>
       <Route index element={<Overview />} />
+      <Route path="today" element={<Today />} />
       <Route path="orders" element={<Orders />} />
       <Route path="people" element={<People />} />
       <Route path="merchants" element={<Merchants />} />
@@ -187,6 +189,170 @@ const MiniStat = ({ label, value }) => (
     <div className="strong mono" style={{ fontSize: 16 }}>{value}</div>
   </div>
 );
+
+/* ---------------------------------- today --------------------------------- */
+
+/*
+ * The overview says how the business is doing. This says what is about to go
+ * wrong: an order the shop has not touched, a bag nobody is riding to, a claim
+ * with money on it, a withdrawal waiting. Every line is a real order with an age,
+ * and every card goes to the screen where it can be fixed.
+ */
+function Today() {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const load = () => api.get('/api/admin/today').then(setData).catch(() => setData(false));
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, []);
+
+  const clearCash = async (record) => {
+    setBusy(true);
+    try {
+      await api.post(`/api/admin/cash/${record.id}/clear`, {});
+      toast.success(`Cash received — ${naira(record.outstanding)} cleared`);
+      load();
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  if (data === null) return <Loading block />;
+  if (data === false) return <Empty icon="clock" title="Could not load today" body="Check your connection and open this screen again." />;
+
+  const q = data.queues;
+  const attention = [
+    {
+      key: 'shop', label: 'Shops sitting on a paid order', count: q.shop_not_accepted.length,
+      detail: q.shop_not_accepted.length ? `oldest ${q.shop_not_accepted[0].waiting_minutes} min` : 'nothing over 15 minutes',
+      tone: q.shop_not_accepted.length ? 'badge-danger' : 'badge-ok', to: '/admin/orders',
+    },
+    {
+      key: 'rider', label: 'Ready, nobody riding', count: q.no_rider.length,
+      detail: q.no_rider.length ? `oldest ${q.no_rider[0].waiting_minutes} min` : 'every ready order has a rider',
+      tone: q.no_rider.length ? 'badge-warn' : 'badge-ok', to: '/admin/orders',
+    },
+    {
+      key: 'claims', label: 'Claims waiting on a decision', count: data.money.claims_count,
+      detail: data.money.claims_amount ? `${naira(data.money.claims_amount)} asked for` : 'no money at stake',
+      tone: data.money.claims_count ? 'badge-warn' : 'badge-ok', to: '/admin/support',
+    },
+    {
+      key: 'payouts', label: 'Withdrawals to pay', count: data.money.payouts_count,
+      detail: data.money.payouts_requested ? naira(data.money.payouts_requested) : 'nothing pending',
+      tone: data.money.payouts_count ? 'badge-warn' : 'badge-ok', to: '/admin/finance',
+    },
+    {
+      key: 'cash', label: 'Cash with riders', count: data.money.cash_records,
+      detail: data.money.cash_outstanding ? naira(data.money.cash_outstanding) : 'all handed over',
+      tone: data.money.cash_outstanding ? 'badge-warn' : 'badge-ok', to: '/admin/finance',
+    },
+    {
+      key: 'apps', label: 'Applications to verify', count: data.approvals.merchants + data.approvals.workers,
+      detail: `${data.approvals.merchants} merchant, ${data.approvals.workers} shopper/rider`,
+      tone: (data.approvals.merchants + data.approvals.workers) ? 'badge-warn' : 'badge-ok', to: '/admin/merchants',
+    },
+  ];
+
+  const Queue = ({ title, rows, empty, href }) => (
+    <div className="card card-flush">
+      <div style={{ padding: 14 }} className="row-between">
+        <span className="h3">{title}</span>
+        {rows.length > 0 && <a className="btn btn-ghost btn-sm" href={`#${href}`}>Open all</a>}
+      </div>
+      {rows.length === 0 && <div className="sub" style={{ padding: '0 14px 14px' }}>{empty}</div>}
+      {rows.map((o) => (
+        <div key={o.id} className="row-between" style={{ padding: '11px 14px', borderTop: '1px solid var(--line)', gap: 10 }}>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="strong mono" style={{ fontSize: 13 }}>{o.code}</div>
+            <div className="tiny muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {o.customer} · {o.store} · {naira(o.total)}
+            </div>
+          </div>
+          <Badge tone={(o.waiting_minutes || 0) >= 30 ? 'badge-danger' : (o.waiting_minutes || 0) >= 15 ? 'badge-warn' : 'badge-muted'}>
+            {o.waiting_minutes != null ? `${o.waiting_minutes}m` : 'new'}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <Shell nav={NAV} title="Today" subtitle={`What needs a person, right now — ${data.day}`}>
+      <div className="grid grid-4" style={{ marginBottom: 16 }}>
+        <Kpi label="Collected today" value={naira(data.today.collected)} hint={`${data.today.orders} orders`} />
+        <Kpi label="Our fees today" value={naira(data.today.fees)} hint="Service + delivery" />
+        <Kpi label="Avg order" value={naira(data.today.avg_order)} hint={`${data.today.completed} completed`} />
+        <Kpi label="New customers" value={data.today.new_customers} hint="Signed up today" />
+      </div>
+
+      <SectionHead title="Needs a decision" subtitle="The number is how many are waiting; the small line is the worst one" />
+      <div className="grid grid-3" style={{ marginBottom: 18 }}>
+        {attention.map((a) => (
+          <a key={a.key} className="card" href={`#${a.to}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div className="row-between">
+              <span className="strong" style={{ fontSize: 13 }}>{a.label}</span>
+              <Badge tone={a.tone}>{a.count}</Badge>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 6 }}>{a.detail}</div>
+            <div className="tiny" style={{ marginTop: 8, color: 'var(--green-700)', fontWeight: 700 }}>Open →</div>
+          </a>
+        ))}
+      </div>
+
+      <div className="grid grid-2" style={{ gap: 14 }}>
+        <Queue title="Shop has not accepted" rows={q.shop_not_accepted.length ? q.shop_not_accepted : q.shop_waiting.slice(0, 4)}
+          empty="Every paid order has been picked up by its shop." href="/admin/orders" />
+        <Queue title="Ready but no rider" rows={q.no_rider} empty="Every bag that is ready has someone riding it." href="/admin/orders" />
+        <Queue title="On the road" rows={q.on_the_road} empty="No deliveries in progress." href="/admin/orders" />
+        <Queue title="Delivered, not confirmed" rows={q.delivered_unconfirmed} empty="No delivery is waiting on the customer." href="/admin/orders" />
+      </div>
+
+      {data.claims.length > 0 && (
+        <>
+          <SectionHead title="Claims to decide" subtitle="Money the customer has asked for back" action={<a className="btn btn-ghost btn-sm" href="#/admin/support">Support inbox</a>} />
+          <div className="card card-flush" style={{ marginBottom: 16 }}>
+            {data.claims.map((c) => (
+              <div key={c.id} className="row-between" style={{ padding: '12px 14px', borderTop: '1px solid var(--line)', gap: 10 }}>
+                <div className="grow" style={{ minWidth: 0 }}>
+                  <div className="strong" style={{ fontSize: 13 }}>{c.subject}</div>
+                  <div className="tiny muted">{c.customer_name} · {c.order_code || 'no order'} · {c.age_minutes}m ago</div>
+                </div>
+                <span className="mono strong">{naira(c.claim_amount)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {data.money.cash_outstanding > 0 && (
+        <>
+          <SectionHead title="Cash to collect" subtitle="Money riders are holding from cash-on-delivery orders" />
+          <CashToCollect onClear={clearCash} busy={busy} />
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function CashToCollect({ onClear, busy }) {
+  const [cash, setCash] = useState(null);
+  useEffect(() => { api.get('/api/admin/cash').then(setCash).catch(() => setCash(null)); }, [onClear]);
+  if (!cash) return null;
+  const rows = (cash.records || []).filter((r) => r.outstanding > 0);
+  if (rows.length === 0) return <div className="card sub">Every rider has handed their cash over.</div>;
+  return (
+    <div className="card card-flush">
+      {rows.map((r) => (
+        <div key={r.id} className="row-between" style={{ padding: '12px 14px', borderTop: '1px solid var(--line)', gap: 10 }}>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="strong mono" style={{ fontSize: 13 }}>{r.code}</div>
+            <div className="tiny muted">{r.rider_name || 'Rider'} · {timeAgo(r.created_at)}</div>
+          </div>
+          <span className="mono strong">{naira(r.outstanding)}</span>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onClear(r)}>Received</Button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /* --------------------------------- orders --------------------------------- */
 

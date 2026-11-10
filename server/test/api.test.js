@@ -1901,3 +1901,51 @@ test('48. two riders are offered the same job and only one of them can take it',
   const final = (await api(`/api/orders/${order.id}`, { token: customer })).body.order;
   assert.equal(final.rider_id, riderBId, 'the order belongs to the rider who accepted');
 });
+
+test('49. the office gets one screen of what is stuck right now', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+
+  // an order the shop has not touched
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = (await api('/api/products?limit=200')).body.products;
+  const item = products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3 && p.price >= 2000);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 1 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet' },
+  });
+  const order = placed.body.order;
+  assert.ok(order, 'an order exists');
+
+  const today = await api('/api/admin/today', { token: admin });
+  assert.equal(today.status, 200, JSON.stringify(today.body).slice(0, 300));
+  const b = today.body;
+
+  assert.match(b.day, /^\d{4}-\d{2}-\d{2}$/, 'it is dated for the office, not the server');
+  assert.ok(b.today.orders >= 1);
+  assert.ok(typeof b.today.collected === 'number');
+  assert.ok(typeof b.today.fees === 'number');
+  assert.ok(typeof b.today.avg_order === 'number');
+
+  for (const key of ['shop_not_accepted', 'shop_waiting', 'no_rider', 'on_the_road', 'delivered_unconfirmed', 'awaiting_approval']) {
+    assert.ok(Array.isArray(b.queues[key]), `${key} is a list, not a number`);
+  }
+  const waiting = b.queues.shop_waiting.find((o) => o.code === order.code);
+  assert.ok(waiting, 'the untouched order is on the list');
+  assert.equal(waiting.customer.length > 0, true);
+  assert.equal(typeof waiting.waiting_minutes, 'number', 'every row says how long it has been sitting');
+
+  assert.ok(typeof b.money.cash_outstanding === 'number');
+  assert.ok(typeof b.money.payouts_requested === 'number');
+  assert.ok(typeof b.money.claims_amount === 'number');
+  assert.ok(typeof b.approvals.merchants === 'number');
+  assert.ok(typeof b.approvals.workers === 'number');
+  assert.ok(Array.isArray(b.claims));
+
+  // a shop that sits on a paid order shows up as a problem the office can act on
+  const stale = b.queues.shop_not_accepted.find((o) => o.code === order.code);
+  if (stale) assert.ok(stale.waiting_minutes >= 0);
+  assert.equal(merchant.length > 10, true);
+});

@@ -91,6 +91,122 @@ router.get(
   })
 );
 
+/*
+ * TODAY — one screen for the person running the marketplace.
+ *
+ * The overview answers "how is the business doing"; this answers "what will go
+ * wrong in the next hour if nobody touches it". Every queue is a list of real
+ * orders with an age on it, so the office can see the thing that has been sitting
+ * for 40 minutes instead of reading a total and guessing.
+ */
+router.get(
+  '/admin/today',
+  asyncHandler(async (req, res) => {
+    // Lagos is UTC+1 all year; "today" has to mean today for the office, not UTC
+    const lagosDay = new Date(Date.now() + 36e5).toISOString().slice(0, 10);
+    const dayStart = new Date(`${lagosDay}T00:00:00+01:00`).toISOString();
+    const minutesSince = (iso) => (iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)) : null);
+
+    const stats = db
+      .prepare(
+        `SELECT COUNT(*) orders,
+                COALESCE(SUM(CASE WHEN payment_status IN ('paid','paid_cash') THEN total ELSE 0 END),0) collected,
+                COALESCE(SUM(CASE WHEN payment_status IN ('paid','paid_cash') THEN service_fee + delivery_fee ELSE 0 END),0) fees,
+                COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END),0) completed
+         FROM orders WHERE created_at >= ?`
+      )
+      .get(dayStart);
+    const newCustomers = db.prepare("SELECT COUNT(*) c FROM users WHERE role='customer' AND created_at >= ?").get(dayStart).c;
+
+    const decorate = (o) => {
+      const customer = db.prepare('SELECT name, phone FROM users WHERE id = ?').get(o.customer_id);
+      const store = o.store_id ? db.prepare('SELECT name FROM stores WHERE id = ?').get(o.store_id) : null;
+      return {
+        id: o.id,
+        code: o.code,
+        total: o.total,
+        status: o.status,
+        type: o.type,
+        customer: customer?.name || 'Customer',
+        phone: customer?.phone || null,
+        store: store?.name || (o.type === 'personal' ? 'Personal shopping' : '—'),
+        age_minutes: minutesSince(o.created_at),
+        waiting_minutes: minutesSince(o.updated_at || o.created_at),
+        rider_id: o.rider_id,
+        shopper_id: o.shopper_id,
+      };
+    };
+    const queue = (sql, params = [], limit = 8) =>
+      db.prepare(`${sql} LIMIT ?`).all(...params, limit).map(decorate);
+
+    const shopWaiting = queue(
+      "SELECT * FROM orders WHERE status = 'paid' AND type = 'merchant' ORDER BY created_at ASC"
+    );
+    const notAccepted = shopWaiting.filter((o) => o.waiting_minutes >= 15);
+    const noRider = queue(
+      "SELECT * FROM orders WHERE rider_id IS NULL AND status IN ('ready_for_pickup','ready_for_delivery') ORDER BY created_at ASC"
+    );
+    const onTheRoad = queue(
+      "SELECT * FROM orders WHERE status IN ('rider_assigned','picked_up','in_transit') ORDER BY updated_at ASC"
+    );
+    const deliveredUnconfirmed = queue("SELECT * FROM orders WHERE status = 'delivered' ORDER BY updated_at ASC");
+    const awaitingApproval = queue(
+      "SELECT * FROM orders WHERE type = 'personal' AND status = 'awaiting_approval' ORDER BY created_at ASC"
+    );
+
+    const cash = listCash();
+    const payouts = db
+      .prepare("SELECT COALESCE(SUM(amount),0) s, COUNT(*) c FROM payouts WHERE status = 'requested'")
+      .get();
+    const claims = db
+      .prepare("SELECT COALESCE(SUM(claim_amount),0) s, COUNT(*) c FROM support_tickets WHERE status != 'resolved' AND claim_amount IS NOT NULL")
+      .get();
+    const ticketsOpen = db.prepare("SELECT COUNT(*) c FROM support_tickets WHERE status = 'open'").get().c;
+    const merchantsPending = db.prepare('SELECT COUNT(*) c FROM merchant_profiles WHERE verified = 0').get().c;
+    const workersPending = db.prepare('SELECT COUNT(*) c FROM worker_profiles WHERE verified = 0').get().c;
+
+    const claimRows = db
+      .prepare(
+        `SELECT t.id, t.subject, t.claim_amount, t.created_at, t.order_id, o.code AS order_code, u.name AS customer_name
+         FROM support_tickets t LEFT JOIN orders o ON o.id = t.order_id LEFT JOIN users u ON u.id = t.customer_id
+         WHERE t.status != 'resolved' AND t.claim_amount IS NOT NULL ORDER BY t.created_at ASC LIMIT 8`
+      )
+      .all()
+      .map((c) => ({ ...c, age_minutes: minutesSince(c.created_at) }));
+
+    res.json({
+      day: lagosDay,
+      today: {
+        orders: stats.orders,
+        collected: stats.collected,
+        fees: stats.fees,
+        completed: stats.completed,
+        new_customers: newCustomers,
+        avg_order: stats.orders ? Math.round(stats.collected / stats.orders) : 0,
+      },
+      queues: {
+        shop_not_accepted: notAccepted,
+        shop_waiting: shopWaiting,
+        no_rider: noRider,
+        on_the_road: onTheRoad,
+        delivered_unconfirmed: deliveredUnconfirmed,
+        awaiting_approval: awaitingApproval,
+      },
+      money: {
+        cash_outstanding: cash.outstanding_total,
+        cash_records: (cash.records || []).filter((r) => r.outstanding > 0).length,
+        payouts_requested: payouts.s,
+        payouts_count: payouts.c,
+        claims_amount: claims.s,
+        claims_count: claims.c,
+      },
+      approvals: { merchants: merchantsPending, workers: workersPending },
+      claims: claimRows,
+      tickets_open: ticketsOpen,
+    });
+  })
+);
+
 /* --------------------------------- orders -------------------------------- */
 
 router.get(

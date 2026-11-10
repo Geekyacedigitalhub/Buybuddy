@@ -305,7 +305,15 @@ function Orders() {
                 <div key={i.id} className="sub">{i.description} ({i.status}) {i.proposed_price ? `— ${naira(i.proposed_price)}` : ''}</div>
               ))}
             </div>
-            <div className="tiny muted">Payment: {detail.payments[0]?.provider} · {detail.payments[0]?.reference}</div>
+            {/* A cash order has no provider and no reference — saying "Payment: ·" told
+                the office nothing. Say how the money actually arrived. */}
+            <div className="tiny muted">
+              {detail.payments?.[0]
+                ? `Payment: ${detail.payments[0].provider || 'provider'} · ${detail.payments[0].reference} · ${detail.payments[0].status}`
+                : detail.order.payment_status === 'paid_cash'
+                  ? 'Payment: cash collected by the rider on delivery'
+                  : `Payment: ${String(detail.order.payment_status || 'pending').replace(/_/g, ' ')} · ${detail.order.payment_method || 'paystack'}`}
+            </div>
 
             <div className="divider" />
             <Field label="Reassign shopper">

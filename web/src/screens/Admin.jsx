@@ -128,24 +128,6 @@ function Overview() {
         </div>
       </div>
 
-      <Modal
-        open={!!clearing}
-        onClose={() => setClearing(null)}
-        title="Mark cash as received"
-        footer={<Button block onClick={() => markCash(clearing, 'Cash handed over at the office')}>{`Yes — I have the ${naira(clearing?.outstanding || 0)}`}</Button>}
-      >
-        <div className="sub">
-          Confirm that <strong>{clearing?.rider_name || 'this rider'}</strong> has handed over{' '}
-          <strong>{naira(clearing?.outstanding || 0)}</strong> for {clearing?.code}. The rider's cash-in-hand
-          goes to zero and they can withdraw their full balance again.
-        </div>
-      </Modal>
-
-      <RejectPayout
-        payout={rejecting}
-        onClose={() => setRejecting(null)}
-        onSubmit={(reason) => decide(rejecting, 'reject', reason)}
-      />
     </Shell>
   );
 }
@@ -534,16 +516,6 @@ function Merchants() {
     try {
       await api.post(`/api/admin/merchants/${store.id}/decision`, { decision, reason });
       toast.success(`Store ${decision}d`);
-      setRejecting(null);
-      load();
-    } catch (e) { toast.error(e.message); }
-  };
-
-  const markCash = async (record, note) => {
-    try {
-      const r = await api.post(`/api/admin/cash/${record.id}/clear`, { note });
-      toast.success(`₦${r.cleared.toLocaleString()} marked as received — the rider has been told`);
-      setClearing(null);
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -615,16 +587,6 @@ function Workers() {
     try {
       await api.post(`/api/admin/workers/${w.id}/decision`, { decision, reason });
       toast.success(`Worker ${decision}d`);
-      setRejecting(null);
-      load();
-    } catch (e) { toast.error(e.message); }
-  };
-
-  const markCash = async (record, note) => {
-    try {
-      const r = await api.post(`/api/admin/cash/${record.id}/clear`, { note });
-      toast.success(`₦${r.cleared.toLocaleString()} marked as received — the rider has been told`);
-      setClearing(null);
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -810,6 +772,25 @@ function Finance() {
           </table>
         </div>
       </div>
+
+      <Modal
+        open={!!clearing}
+        onClose={() => setClearing(null)}
+        title="Mark cash as received"
+        footer={<Button block onClick={() => markCash(clearing, 'Cash handed over at the office')}>{`Yes — I have the ${naira(clearing?.outstanding || 0)}`}</Button>}
+      >
+        <div className="sub">
+          Confirm that <strong>{clearing?.rider_name || 'this rider'}</strong> has handed over{' '}
+          <strong>{naira(clearing?.outstanding || 0)}</strong> for {clearing?.code}. The rider's cash-in-hand goes
+          to zero and they can withdraw their full balance again.
+        </div>
+      </Modal>
+
+      <RejectPayout
+        payout={rejecting}
+        onClose={() => setRejecting(null)}
+        onSubmit={(reason) => decide(rejecting, 'reject', reason)}
+      />
     </Shell>
   );
 }

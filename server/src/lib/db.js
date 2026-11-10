@@ -302,6 +302,8 @@ export function migrate() {
   ensureColumn('orders', 'rider_lng', 'REAL');
   ensureColumn('orders', 'rider_accuracy', 'REAL');
   ensureColumn('orders', 'rider_updated_at', 'TEXT');
+  // how much of a captured payment has been given back, so partial refunds add up
+  ensureColumn('payments', 'refunded_amount', 'INTEGER NOT NULL DEFAULT 0');
   // when a booked ("deliver Tuesday 10:00") order was actually handed to the shop
   ensureColumn('orders', 'released_at', 'TEXT');
   // money reserved out of a worker's wallet when they ask for a withdrawal

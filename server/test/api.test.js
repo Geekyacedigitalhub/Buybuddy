@@ -1360,3 +1360,46 @@ test('40. a booked delivery time is kept, not ignored', async () => {
   const acceptNow = await api(`/api/merchant/orders/${orderId}/accept`, { method: 'POST', token: merchant });
   assert.equal(acceptNow.status, 200, JSON.stringify(acceptNow.body));
 });
+
+test('41. a refund adds up, goes where the money can be spent, and never exceeds what was paid', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+
+  // a wallet-paid order, so the test can follow the money without a card
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = await api('/api/products?limit=200');
+  const item = products.body.products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 0);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: Math.max(2, Math.ceil(2000 / item.price)) } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet' },
+  });
+  assert.equal(placed.status, 201, JSON.stringify(placed.body));
+  const order = placed.body.order;
+
+  const before = (await api('/api/wallet', { token: customer })).body.balance;
+
+  const half = Math.floor(order.total / 2);
+  const first = await api(`/api/admin/orders/${order.id}/refund`, { method: 'POST', token: admin, body: { amount: half, reason: 'Missing item' } });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.refunded, half);
+  assert.equal(first.body.to_card, false, 'no card to send it to, so it goes to the wallet');
+  assert.equal(first.body.fully_refunded, false);
+  assert.equal((await api('/api/wallet', { token: customer })).body.balance, before + half, 'the customer can actually spend it');
+
+  const tooMuch = await api(`/api/admin/orders/${order.id}/refund`, {
+    method: 'POST', token: admin, body: { amount: order.total, reason: 'Trying it on' },
+  });
+  assert.equal(tooMuch.status, 400, 'cannot hand back more than is left');
+  assert.match(tooMuch.body.error, new RegExp(`Only ₦${(order.total - half).toLocaleString()} is left`));
+
+  const rest = await api(`/api/admin/orders/${order.id}/refund`, { method: 'POST', token: admin, body: { reason: 'Rest of it' } });
+  assert.equal(rest.status, 200);
+  assert.equal(rest.body.refunded, order.total - half, 'the default is exactly what is still owed');
+  assert.equal(rest.body.fully_refunded, true);
+  assert.equal((await api('/api/wallet', { token: customer })).body.balance, before + order.total);
+
+  const again = await api(`/api/admin/orders/${order.id}/refund`, { method: 'POST', token: admin, body: { reason: 'Third time' } });
+  assert.equal(again.status, 400);
+  assert.match(again.body.error, /already been refunded/i);
+});

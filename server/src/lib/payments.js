@@ -3,6 +3,7 @@ import { db } from './db.js';
 import { settingsAll, notify, event, walletEntry, walletBalance } from './settings.js';
 import { bad, hmacSha512, money, now, uid } from './util.js';
 import { offerJob, transition } from './orders.js';
+import { pointsEntry } from './growth.js';
 
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
 const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || '';
@@ -444,46 +445,110 @@ export function handlePaystackWebhook(rawBody, signature) {
  *    finds out about days later. So the refund is sent to Paystack first, and if
  *    Paystack refuses, the admin sees the reason and nothing is marked refunded.
  */
-export async function refundPayment(orderId, { amount, reason, actor }) {
+export async function refundPayment(orderId, { amount, reason, actor, returnPoints = true }) {
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!order) throw bad('Order not found');
+  if (order.payment_status === 'refunded') throw bad(`Everything on ${order.code} has already been refunded.`);
   if (!['paid', 'paid_cash'].includes(order.payment_status)) throw bad('This order has no captured payment to refund.');
-  const amt = money(amount || order.total);
-  const payment = db.prepare("SELECT * FROM payments WHERE order_id = ? AND status = 'success' ORDER BY created_at DESC LIMIT 1").get(orderId);
 
+  const captured = db
+    .prepare("SELECT * FROM payments WHERE order_id = ? AND status IN ('success','refunded') ORDER BY created_at")
+    .all(orderId);
+  const paidTotal = captured.reduce((s, p) => s + p.amount, 0) || order.total;
+  const givenBack = captured.reduce((s, p) => s + (p.refunded_amount || 0), 0);
+  const remaining = Math.max(0, paidTotal - givenBack);
+  if (remaining <= 0) throw bad(`Everything on ${order.code} has already been refunded.`);
+
+  const amt = money(amount || remaining);
+  if (amt <= 0) throw bad('Enter an amount to refund.');
+  if (amt > remaining) {
+    throw bad(`Only ₦${remaining.toLocaleString()} is left to refund on ${order.code} — ₦${givenBack.toLocaleString()} of ₦${paidTotal.toLocaleString()} has already gone back.`);
+  }
+
+  const payment = captured.filter((p) => p.status === 'success').pop() || captured[captured.length - 1];
+
+  /*
+   * Where the money goes has to match where it came from. A real card charge is
+   * refunded at Paystack. Everything else — wallet, cash, or a demo reference
+   * Paystack has never seen — is credited to the wallet, because that is the only
+   * place the customer can actually spend it.
+   */
+  let sentToProvider = false;
   let refundNote = null;
   if (payment?.provider === 'paystack' && !MOCK) {
     const { res, json } = await paystack('/refund', {
       method: 'POST',
       body: {
         transaction: payment.reference,
-        amount: Math.min(amt, payment.amount) * 100, // kobo, never more than was captured
+        amount: Math.min(amt, payment.amount - (payment.refunded_amount || 0)) * 100,
         merchant_note: `BUYBUDDY refund ${order.code}: ${reason || 'no reason given'}`,
       },
     });
     if (!res.ok || !json?.status) {
-      throw bad(json?.message || 'Paystack refused the refund — check the transaction in your Paystack dashboard.');
+      const said = String(json?.message || '').trim();
+      const nothingCharged = /transaction not found|not been completed|no successful|not successful|does not exist/i.test(said);
+      if (!nothingCharged) {
+        throw bad(
+          `Paystack refused this refund: “${said || 'no reason given'}”. ` +
+          'Nothing has been marked refunded. Check the transaction in your Paystack dashboard — a refund needs enough balance in your Paystack account (Paystack → Balance) — then try again.'
+        );
+      }
+      refundNote = { paystack: said, note: 'nothing was ever charged at Paystack — refunded to the wallet' };
+    } else {
+      sentToProvider = true;
+      refundNote = { refund_status: json.data?.status || 'pending', refund_id: json.data?.id || null };
     }
-    refundNote = { refund_status: json.data?.status || 'pending', refund_id: json.data?.id || null };
   }
 
-  if (payment) {
-    db.prepare("UPDATE payments SET status = 'refunded', provider_payload = ? WHERE id = ?").run(
-      JSON.stringify({ ...refundNote, refunded_amount: amt }).slice(0, 4000),
-      payment.id
+  const fully = givenBack + amt >= paidTotal;
+  const tx = db.transaction(() => {
+    if (payment) {
+      const paidBack = (payment.refunded_amount || 0) + amt;
+      db.prepare('UPDATE payments SET refunded_amount = ?, status = ?, provider_payload = ? WHERE id = ?').run(
+        paidBack,
+        paidBack >= payment.amount ? 'refunded' : 'success',
+        JSON.stringify({ ...refundNote, refunded_amount: paidBack }).slice(0, 4000),
+        payment.id
+      );
+    }
+    if (!sentToProvider) {
+      walletEntry(order.customer_id, { type: 'credit', amount: amt, orderId, description: `Refund — ${order.code}` });
+    }
+    db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?').run(
+      fully ? 'refunded' : order.payment_status,
+      now(),
+      orderId
     );
-  }
-  db.prepare("UPDATE orders SET payment_status = 'refunded', updated_at = ? WHERE id = ?").run(now(), orderId);
-  if (order.payment_method === 'wallet' || payment?.provider === 'wallet') {
-    walletEntry(order.customer_id, { type: 'credit', amount: amt, orderId, description: `Refund — ${order.code}` });
-  }
-  db.prepare("UPDATE orders SET status = 'refunded', completed_at = ?, updated_at = ? WHERE id = ?").run(now(), now(), orderId);
-  const where = payment?.provider === 'paystack' && !MOCK ? 'back to the customer\'s card via Paystack' : 'to the BUYBUDDY wallet';
+    if (fully) {
+      db.prepare("UPDATE orders SET status = 'refunded', completed_at = ?, updated_at = ? WHERE id = ?").run(now(), now(), orderId);
+    }
+    // points spent on the order come back with the money
+    if (returnPoints && order.points_redeemed) {
+      try {
+        pointsEntry(order.customer_id, {
+          type: 'adjust', points: order.points_redeemed, orderId,
+          description: `Points returned — ${order.code} refunded`,
+        });
+      } catch (e) { console.error('[refund] points return failed:', e.message); }
+    }
+  });
+  tx();
+
+  const where = sentToProvider
+    ? 'back to the card via Paystack (5–10 working days)'
+    : 'to the BUYBUDDY wallet — spendable immediately';
   event(orderId, {
     actorId: actor?.id, actorRole: 'admin', type: 'refunded',
-    message: `Refund of ₦${amt.toLocaleString()} issued ${where} — ${reason || 'no reason given'}`,
+    message: `Refund of ₦${amt.toLocaleString()} issued ${where} — ${reason || 'no reason given'}${fully ? '' : ` (₦${(remaining - amt).toLocaleString()} still owed)`}`,
     meta: refundNote || undefined,
   });
-  notify(order.customer_id, { title: `Refund issued — ${order.code}`, body: `₦${amt.toLocaleString()} has been refunded. ${reason || ''}`, kind: 'payment', orderId });
-  return { refunded: amt };
+  notify(order.customer_id, {
+    title: `Refund issued — ${order.code}`,
+    body: sentToProvider
+      ? `₦${amt.toLocaleString()} is on its way back to your card — banks usually take 5–10 working days. ${reason || ''}`
+      : `₦${amt.toLocaleString()} is in your BUYBUDDY wallet now, ready to spend. ${reason || ''}`,
+    kind: 'payment',
+    orderId,
+  });
+  return { refunded: amt, remaining: remaining - amt, to_card: sentToProvider, fully_refunded: fully };
 }

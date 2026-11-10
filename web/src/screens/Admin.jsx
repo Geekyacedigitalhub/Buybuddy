@@ -239,8 +239,24 @@ function Orders() {
               </Select>
             </Field>
             <div className="row" style={{ gap: 8 }}>
-              <Button size="sm" variant="ghost" onClick={() => act(`/api/admin/orders/${detail.order.id}/refund`, { reason: 'Admin resolution' }, 'Refund issued')}>
-                Refund {naira(detail.order.total)}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const paid = detail.payments.filter((p) => ['success', 'refunded'].includes(p.status));
+                  const already = paid.reduce((s, p) => s + (p.refunded_amount || 0), 0);
+                  const left = Math.max(0, (paid.reduce((s, p) => s + p.amount, 0) || detail.order.total) - already);
+                  const reason = prompt(
+                    `Refund how much of ${detail.order.code}? ₦${left.toLocaleString()} is still owed to the customer.`,
+                    String(left),
+                  );
+                  if (reason === null) return;
+                  const why = prompt('Reason (the customer sees this on the order):', 'Admin resolution');
+                  if (why === null) return;
+                  act(`/api/admin/orders/${detail.order.id}/refund`, { amount: Number(reason) || left, reason: why }, 'Refund issued');
+                }}
+              >
+                Refund {naira(Math.max(0, (detail.payments.filter((p) => ['success', 'refunded'].includes(p.status)).reduce((s, p) => s + p.amount, 0) || detail.order.total) - detail.payments.reduce((s, p) => s + (p.refunded_amount || 0), 0)))}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => act(`/api/admin/orders/${detail.order.id}/status`, { status: 'cancelled', note: 'Cancelled by admin' }, 'Order cancelled')}>
                 Cancel order

@@ -511,7 +511,7 @@ router.post(
         });
       }
       if (['paid', 'paid_cash'].includes(order.payment_status)) {
-        refundPayment(order.id, { amount: order.total, reason: 'Order cancelled by customer', actor: req.user });
+        refundPayment(order.id, { amount: order.total, reason: 'Order cancelled by customer', actor: req.user, returnPoints: false });
       }
     });
     tx();

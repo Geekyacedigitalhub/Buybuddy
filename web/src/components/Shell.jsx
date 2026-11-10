@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Icon, Logo, useAuth } from '../lib/ui.jsx';
+import { Icon, Logo, OfflineBar, useAuth } from '../lib/ui.jsx';
 
 /** Desktop side-navigation shell shared by the merchant portal and admin dashboard. */
 export default function Shell({ nav, title, subtitle, children, accent = 'admin' }) {
@@ -56,6 +56,7 @@ export default function Shell({ nav, title, subtitle, children, accent = 'admin'
           <button className="chip" onClick={() => navigate('/')}>Customer app</button>
         </div>
         <div className="content">
+          <OfflineBar />
           <div className="row-between wrap" style={{ marginBottom: 18, gap: 10 }}>
             <div>
               <div className="h1">{title}</div>

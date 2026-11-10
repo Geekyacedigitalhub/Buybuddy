@@ -1,7 +1,7 @@
 import { AskHost } from './lib/ask.jsx';
 import React, { Suspense, useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { AuthProvider, CartProvider, Logo, Icon, useAuth, useCart, Loading, ToastProvider } from './lib/ui.jsx';
+import { AuthProvider, CartProvider, Logo, Icon, OfflineBar, useAuth, useCart, Loading, ToastProvider } from './lib/ui.jsx';
 import { naira, hasApiBase, isNativeApp } from './lib/api.js';
 import { NotificationsBell } from './lib/bell.jsx';
 import ServerSetup from './screens/ServerSetup.jsx';
@@ -118,6 +118,8 @@ function CustomerShell({ children }) {
           </button>
         </div>
       </div>
+      {/* a phone with no signal says so, instead of leaving a blank screen to speak */}
+      <OfflineBar />
       <main className="grow">
         <Suspense fallback={<Loading label="Opening…" />}>{children}</Suspense>
       </main>
@@ -229,6 +231,8 @@ function WorkerShell({ children }) {
           <button className="btn btn-ghost btn-icon" onClick={logout} aria-label="Log out"><Icon name="logout" size={18} /></button>
         </div>
       </div>
+      {/* a phone with no signal says so, instead of leaving a blank screen to speak */}
+      <OfflineBar />
       <main className="grow">
         <Suspense fallback={<Loading label="Opening…" />}>{children}</Suspense>
       </main>

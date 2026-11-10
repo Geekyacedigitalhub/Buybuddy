@@ -1,10 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import { api, naira, pretty, timeAgo, statusTone, assetUrl } from '../lib/api.js';
-import {
-  Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, StatusBadge,
-  Textarea, useAuth, useToast,
-} from '../lib/ui.jsx';
+import { Badge, Button, Empty, Field, Icon, Input, LoadFailed, Loading, Modal, SectionHead, Select, StatusBadge, Textarea, useAuth, useAutoRetry, useToast } from '../lib/ui.jsx';
 import Shell, { Kpi, Bars } from '../components/Shell.jsx';
 import PhotoPicker from '../components/PhotoPicker.jsx';
 
@@ -18,9 +15,23 @@ const NAV = [
 
 export default function MerchantApp() {
   const [me, setMe] = useState(null);
-  const load = () => api.get('/api/merchant/store').then(setMe).catch(() => setMe(false));
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get('/api/merchant/store')
+      .then((r) => setMe(r.store ? r : false)) // false = this account really has no shop
+      .catch(setError);
+  };
   useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
+  if (me === null && error) {
+    return (
+      <div className="page">
+        <LoadFailed what="your shop" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (me === null) return <Loading block label="Loading your store…" />;
   if (me === false) return <NoStore onDone={load} />;
 
@@ -154,9 +165,15 @@ function Dashboard({ me, reload }) {
   const toast = useToast();
   const nav = useNavigate();
 
-  const load = () => api.get('/api/merchant/dashboard').then(setData).catch(() => setData(null));
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get('/api/merchant/dashboard').then(setData).catch(setError);
+  };
   useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
+  if (!data && error) return <LoadFailed what="your dashboard" error={error} onRetry={load} />;
   if (!data) return <Loading block />;
   const { store, metrics, pending_orders, active_orders, low_stock, chart } = data;
 
@@ -563,11 +580,18 @@ function Settlements() {
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
-  const load = () => api.get('/api/merchant/settlements').then((d) => { setData(d); setBank(d.bank || {}); }).catch(() => setData(false));
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get('/api/merchant/settlements')
+      .then((d) => { setData(d); setBank(d.bank || {}); })
+      .catch(setError);
+  };
   useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
+  if (data === null && error) return <LoadFailed what="your settlements" error={error} onRetry={load} />;
   if (data === null) return <Loading block />;
-  if (data === false) return <Empty title="Could not load your settlements" body="Pull down to try again." />;
 
   const request = async () => {
     setBusy(true);

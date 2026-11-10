@@ -2,7 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { askConfirm } from '../../lib/ask.jsx';
 import { api, naira, shortDate, assetUrl } from '../../lib/api.js';
-import { Badge, Button, Empty, Icon, Loading, Modal, Money, Photo, SectionHead, Skeleton, Stars, StatusBadge, Textarea, useAuth, useCart, useToast } from '../../lib/ui.jsx';
+import {
+  Badge, Button, Empty, Icon, LoadFailed, Loading, Modal, Money, Photo, SectionHead, Skeleton, Stars,
+  StatusBadge, Textarea, useAuth, useAutoRetry, useCart, useToast,
+} from '../../lib/ui.jsx';
 
 /* --------------------------------- home ---------------------------------- */
 
@@ -31,9 +34,14 @@ export function Home() {
   const { user } = useAuth();
   const nav = useNavigate();
 
-  useEffect(() => {
-    api.get('/api/home').then(setData).catch(() => setData({ categories: [], banners: [], popular_stores: [], recommended: [], deals: [], recent: [] }));
-  }, []);
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    api.get('/api/home').then(setData).catch(setError);
+  };
+  useEffect(() => { load(); }, []);
+  // the moment the phone has a network again, fetch it for real
+  useAutoRetry(load, Boolean(error));
 
   useEffect(() => {
     if (!data?.banners?.length) return;
@@ -41,6 +49,13 @@ export function Home() {
     return () => clearInterval(t);
   }, [data]);
 
+  if (error && !data) {
+    return (
+      <div className="page">
+        <LoadFailed what="the shop" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (!data) {
     return (
       <div className="page col" style={{ gap: 16 }}>
@@ -281,19 +296,27 @@ export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(params.get('q') || '');
   const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const nav = useNavigate();
 
+  const term = params.get('q') || '';
+  const search = () => {
+    if (!term) return undefined;
+    setError(null);
+    setBusy(true);
+    return api.get(`/api/search?q=${encodeURIComponent(term)}`)
+      .then(setData)
+      .catch(setError)
+      .finally(() => setBusy(false));
+  };
+
   useEffect(() => {
-    const term = params.get('q') || '';
     setQ(term);
     if (!term) return setData(null);
-    setBusy(true);
-    api.get(`/api/search?q=${encodeURIComponent(term)}`)
-      .then(setData)
-      .catch(() => setData({ products: [], stores: [] }))
-      .finally(() => setBusy(false));
+    search();
   }, [params]);
+  useAutoRetry(search, Boolean(error));
 
   return (
     <div className="page col">
@@ -325,6 +348,7 @@ export function SearchPage() {
       )}
 
       {busy && <Loading label="Searching…" />}
+      {!busy && error && <LoadFailed what="search" error={error} onRetry={search} />}
 
       {data && !busy && (
         <>
@@ -371,13 +395,17 @@ export function Browse() {
     api.get('/api/categories').then((r) => setCats(r.categories)).catch(() => {});
   }, []);
 
-  useEffect(() => {
+  const [error, setError] = useState(null);
+  const load = () => {
     setLoading(true);
+    setError(null);
     const p = new URLSearchParams({ sort, limit: '40' });
     if (id) p.set('category', id);
     if (priceMax) p.set('max_price', priceMax);
-    api.get(`/api/products?${p}`).then((r) => setProducts(r.products)).catch(() => setProducts([])).finally(() => setLoading(false));
-  }, [id, sort, priceMax]);
+    api.get(`/api/products?${p}`).then((r) => setProducts(r.products)).catch(setError).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [id, sort, priceMax]);
+  useAutoRetry(load, Boolean(error));
 
   const active = cats.find((c) => c.id === id);
 
@@ -413,9 +441,11 @@ export function Browse() {
         </select>
       </div>
 
-      {loading ? <Loading /> : products.length === 0
-        ? <Empty title="Nothing here yet" body="This category has no products right now." />
-        : <div className="prod-grid">{products.map((p) => <ProductCard key={p.id} product={p} />)}</div>}
+      {loading ? <Loading /> : error
+        ? <LoadFailed what="the list" error={error} onRetry={load} />
+        : products.length === 0
+          ? <Empty title="Nothing here yet" body="This category has no products right now." />
+          : <div className="prod-grid">{products.map((p) => <ProductCard key={p.id} product={p} />)}</div>}
     </div>
   );
 }
@@ -428,10 +458,21 @@ export function StorePage() {
   const [cat, setCat] = useState('');
   const nav = useNavigate();
 
-  useEffect(() => {
-    api.get(`/api/stores/${id}`).then(setData).catch(() => setData(null));
-  }, [id]);
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    api.get(`/api/stores/${id}`).then(setData).catch(setError);
+  };
+  useEffect(() => { load(); }, [id]);
+  useAutoRetry(load, Boolean(error));
 
+  if (error && !data) {
+    return (
+      <div className="page">
+        <LoadFailed what="this shop" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (!data) return <Loading />;
   const { store, products, categories } = data;
   const list = cat ? products.filter((p) => p.category_id === cat) : products;
@@ -506,20 +547,37 @@ export function ProductPage() {
     return () => io.disconnect();
   }, [data]);
 
+  const loadProduct = () => {
+    setFailed(null);
+    api.get(`/api/products/${id}`)
+      .then(setData)
+      .catch(setFailed);
+  };
+
   useEffect(() => {
     let alive = true;
     setFailed(false);
     api.get(`/api/products/${id}`)
       .then((d) => { if (alive) setData(d); })
-      .catch(() => { if (alive) setFailed(true); });
+      .catch((err) => { if (alive) setFailed(err); });
     return () => { alive = false; };
   }, [id]);
+  useAutoRetry(loadProduct, Boolean(failed && failed.status !== 404));
 
   useEffect(() => {
     if (!user) return;
     api.get('/api/favourites').then((r) => setFav(r.favourites.some((f) => f.id === id))).catch(() => {});
   }, [id, user]);
 
+  if (failed && failed.status !== 404) {
+    // the shop is fine, the phone is not: never say an item was delisted because
+    // a request failed to leave the device
+    return (
+      <div className="page page-tight">
+        <LoadFailed what="this item" error={failed} onRetry={() => { setFailed(null); loadProduct(); }} />
+      </div>
+    );
+  }
   if (failed) {
     return (
       <div className="page page-tight">

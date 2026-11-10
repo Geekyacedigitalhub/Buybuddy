@@ -33,6 +33,8 @@ const P = {
   shop: 'M4 8h16l-1 12H5L4 8ZM8 8V6a4 4 0 0 1 8 0v2',
   wallet: 'M3 8h18v11H3zM3 8l2-4h14l2 4M16 14h2',
   bell: 'M18 16V11a6 6 0 1 0-12 0v5l-2 3h16zM10 22h4',
+  wifi: 'M2 8.5a15 15 0 0 1 20 0M5 12a10.5 10.5 0 0 1 14 0M8.5 15.5a6 6 0 0 1 7 0M12 19.5h.01',
+  refresh: 'M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7',
   heart: 'M12 20s-7-4.3-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.7-7 9-7 9Z',
   phone: 'M6 3h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 4 5a2 2 0 0 1 2-2Z',
 };
@@ -185,6 +187,94 @@ export const Empty = ({ icon = 'box', title, body, action }) => (
     {action}
   </div>
 );
+
+/*
+ * "We could not load this" is not the same sentence as "you have nothing here",
+ * and for a customer on a Lagos mobile network the difference matters: an empty
+ * list implies their orders are gone. Every screen that fetches uses this instead
+ * of turning a dropped connection into an empty state.
+ */
+export const LoadFailed = ({ title = 'We could not load this', error, onRetry, what }) => {
+  const offline = Boolean(error && error.offline) || (typeof navigator !== 'undefined' && !navigator.onLine);
+  const slow = Boolean(error && error.timeout);
+  return (
+    <div className="col center" style={{ padding: '44px 20px', alignItems: 'center', gap: 10 }}>
+      <div
+        style={{
+          width: 54, height: 54, borderRadius: 16, background: offline || slow ? '#FFF3E6' : 'var(--green-50)',
+          display: 'grid', placeItems: 'center', color: offline || slow ? '#B4552A' : 'var(--green-700)',
+        }}
+      >
+        <Icon name={offline ? 'wifi' : 'refresh'} size={26} />
+      </div>
+      <div className="h3">{offline ? 'No internet' : slow ? 'The connection is too slow' : title}</div>
+      <div className="sub" style={{ maxWidth: 340 }}>
+        {offline
+          ? `We could not reach BUYBUDDY${what ? ` to load ${what}` : ''}. Check your data or Wi-Fi — your account and orders are safe.`
+          : slow
+            ? `BUYBUDDY did not answer${what ? ` with ${what}` : ''}. Your signal may be weak right now. Try again, or move somewhere with better reception.`
+            : (error && error.message) || `Something went wrong${what ? ` loading ${what}` : ''}. Try again in a moment.`}
+      </div>
+      {onRetry && (
+        <Button onClick={onRetry} style={{ marginTop: 4 }}>
+          <Icon name="refresh" size={16} /> Try again
+        </Button>
+      )}
+    </div>
+  );
+};
+
+/**
+ * True while the device reports a connection. That is only used for wording —
+ * a request that fails is what decides whether something is actually reachable.
+ */
+export function useOnline() {
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
+  return online;
+}
+
+/**
+ * Try again by itself once the phone is back on a network (and once more a moment
+ * after), so a customer who walks back into signal does not have to know to retry.
+ */
+export function useAutoRetry(retry, active) {
+  const online = useOnline();
+  useEffect(() => {
+    if (!active || !online) return undefined;
+    const t = setTimeout(() => retry(), 1500);
+    return () => clearTimeout(t);
+  }, [active, online]); // eslint-disable-line react-hooks/exhaustive-deps
+  return online;
+}
+
+/* A slim strip under the topbar while the phone has no connection: it says what
+   is happening instead of leaving a blank screen to imply something worse. */
+export const OfflineBar = () => {
+  const online = useOnline();
+  if (online) return null;
+  return (
+    <div
+      role="status"
+      style={{
+        background: '#FFF3E6', color: '#7A3016', borderBottom: '1px solid #F3D8BF',
+        padding: '7px 14px', fontSize: 12.5, fontWeight: 650, display: 'flex',
+        alignItems: 'center', gap: 7, justifyContent: 'center',
+      }}
+    >
+      <Icon name="wifi" size={14} /> You are offline. This screen will reload when you have signal.
+    </div>
+  );
+};
 
 export const Stars = ({ value = 0, count, size = 13 }) => (
   <span className="row" style={{ gap: 3, alignItems: 'center' }}>

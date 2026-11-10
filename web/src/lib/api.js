@@ -70,16 +70,51 @@ export class ApiError extends Error {
   }
 }
 
+/*
+ * A request that cannot finish must say so, quickly and in words a person can
+ * act on. Before this, a phone with no signal sat on a spinner forever (fetch has
+ * no timeout of its own) and every screen turned the silence into "you have no
+ * orders" — a statement about the customer's account made by a failed socket.
+ */
+export const TIMEOUT_MS = 20000;
+
+const offlineError = () => {
+  const err = new ApiError('No internet. Check your data or Wi-Fi, then try again.', 0, { offline: true });
+  err.offline = true;
+  return err;
+};
+
+const timeoutError = () => {
+  const err = new ApiError(
+    `BUYBUDDY did not answer in ${TIMEOUT_MS / 1000} seconds. Your connection may be too slow right now — try again.`,
+    0,
+    { timeout: true },
+  );
+  err.timeout = true;
+  return err;
+};
+
 async function request(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
-  const res = await fetch(BASE() + path, {
-    method,
-    headers: {
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timedOut = false;
+  const timer = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, TIMEOUT_MS) : null;
+  let res;
+  try {
+    res = await fetch(BASE() + path, {
+      method,
+      signal: controller ? controller.signal : undefined,
+      headers: {
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw timedOut ? timeoutError() : offlineError();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (raw) return res;
   const text = await res.text();
   let data = {};
@@ -103,9 +138,20 @@ async function request(path, { method = 'GET', body, headers = {}, raw = false }
  * The ordinary request() helper parses JSON, which would mangle a download.
  */
 export const downloadFile = async (path) => {
-  const res = await fetch(BASE() + path, {
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-  });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timedOut = false;
+  const timer = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, 120000) : null;
+  let res;
+  try {
+    res = await fetch(BASE() + path, {
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      signal: controller ? controller.signal : undefined,
+    });
+  } catch {
+    throw timedOut ? timeoutError() : offlineError();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (!res.ok) {
     let message = `Download failed (${res.status})`;
     try { message = (await res.json()).error || message; } catch { /* not JSON */ }

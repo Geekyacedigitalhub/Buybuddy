@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, naira, timeAgo, fmtAddress, pretty, getApiBase, setApiBase, isNativeApp } from '../../lib/api.js';
-import {
-  Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
-  useAuth, useToast,
-} from '../../lib/ui.jsx';
+import { Badge, Button, Empty, Field, Icon, Input, LoadFailed, Loading, Modal, SectionHead, StatusBadge, Textarea, useAuth, useAutoRetry, useToast } from '../../lib/ui.jsx';
 import { ProductCard } from './Shop.jsx';
 
 /* -------------------------------- account -------------------------------- */
@@ -153,14 +150,18 @@ export function Rewards() {
   const [copied, setCopied] = useState(false);
   const toast = useToast();
 
-  useEffect(() => {
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
     Promise.all([api.get('/api/loyalty'), api.get('/api/referrals'), api.get('/api/me/rewards')])
       .then(([loyalty, referral, me]) => setData({ loyalty, referral, me }))
-      .catch(() => setData(false));
-  }, []);
+      .catch(setError);
+  };
+  useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
+  if (data === null && error) return <LoadFailed what="your rewards" error={error} onRetry={load} />;
   if (data === null) return <Loading />;
-  if (data === false) return <Empty icon="star" title="Rewards unavailable" body="Try again in a moment." />;
 
   const { loyalty, referral } = data;
   const copy = async () => {
@@ -263,8 +264,13 @@ export function Wallet() {
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
-  const load = () => api.get('/api/wallet').then(setData);
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get('/api/wallet').then(setData).catch(setError);
+  };
   useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
   const topup = async () => {
     setBusy(true);
@@ -281,6 +287,14 @@ export function Wallet() {
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
+  if (!data && error) {
+    return (
+      <div className="page page-tight col">
+        <SectionHead title="Wallet" subtitle="Pay for orders instantly, and receive refunds here." />
+        <LoadFailed what="your wallet" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (!data) return <Loading />;
 
   return (
@@ -337,10 +351,22 @@ export function Favourites() {
   const { user } = useAuth();
   /* A signed-out visitor has no saved list at all — telling them "nothing saved
      yet" hides the real reason and leaves them tapping hearts that go nowhere. */
-  useEffect(() => {
+  const [error, setError] = useState(null);
+  const load = () => {
     if (!user) return setItems([]);
-    api.get('/api/favourites').then((r) => setItems(r.favourites)).catch(() => setItems([]));
-  }, [user]);
+    setError(null);
+    return api.get('/api/favourites').then((r) => setItems(r.favourites)).catch(setError);
+  };
+  useEffect(() => { load(); }, [user]);
+  useAutoRetry(load, Boolean(error));
+  if (items === null && error) {
+    return (
+      <div className="page page-tight col">
+        <SectionHead title="Favourites" />
+        <LoadFailed what="your favourites" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (!items) return <Loading />;
   if (!user) {
     return (
@@ -441,8 +467,13 @@ export function Notifications() {
    * row is marked read when it is opened, and "Mark all as read" is a decision
    * the customer makes.
    */
-  const load = () => api.get('/api/notifications').then(setData).catch(() => setData({ notifications: [] }));
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get('/api/notifications').then(setData).catch(setError);
+  };
   useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
   const openOne = async (n) => {
     try {
@@ -462,6 +493,14 @@ export function Notifications() {
     } catch (e) { toast.error(e.message); }
   };
 
+  if (!data && error) {
+    return (
+      <div className="page page-tight col">
+        <SectionHead title="Notifications" />
+        <LoadFailed what="your notifications" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (!data) return <Loading />;
   const unread = data.notifications.filter((n) => !n.read).length;
   return (

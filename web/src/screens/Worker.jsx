@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { api, naira, pretty, timeAgo, fmtAddress, toDataUrl, assetUrl } from '../lib/api.js';
-import {
-  Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
-  useAuth, useToast,
-} from '../lib/ui.jsx';
+import { Badge, Button, Empty, Field, Icon, Input, LoadFailed, Loading, Modal, SectionHead, StatusBadge, Textarea, useAuth, useAutoRetry, useToast } from '../lib/ui.jsx';
 import LiveLocation from '../components/LiveLocation.jsx';
 import PhotoPicker from '../components/PhotoPicker.jsx';
 
@@ -29,9 +26,15 @@ function WorkerDashboard() {
   const nav = useNavigate();
   const { user, refresh } = useAuth();
 
-  const load = () => api.get('/api/worker/dashboard').then(setData).catch(() => setData(null));
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get('/api/worker/dashboard').then(setData).catch(setError);
+  };
   useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
+  if (!data && error) return <LoadFailed what="your jobs" error={error} onRetry={load} />;
   if (!data) return <Loading />;
   const { profile, offers, active, completed, earnings, role } = data;
   const online = profile?.available;
@@ -203,9 +206,15 @@ function TaskDetail() {
   const nav = useNavigate();
   const { user } = useAuth();
 
-  const load = () => api.get(`/api/worker/jobs/${id}`).then(setData).catch(() => setData(null));
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get(`/api/worker/jobs/${id}`).then(setData).catch(setError);
+  };
   useEffect(() => { load(); }, [id]);
+  useAutoRetry(load, Boolean(error));
 
+  if (!data && error) return <LoadFailed what="this job" error={error} onRetry={load} />;
   if (!data) return <Loading />;
   const { order } = data;
   const isShopper = order.shopper_id === user.id;

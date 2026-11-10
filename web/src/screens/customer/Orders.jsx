@@ -6,7 +6,10 @@ import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress, assetUr
    demand: the rest of the app stays light and the map still appears instantly. */
 const DeliveryMap = React.lazy(() => import('../../components/DeliveryMap.jsx'));
 import PhotoPicker from '../../components/PhotoPicker.jsx';
-import { Badge, Button, Empty, Field, Icon, Input, Loading, Modal, Photo, SectionHead, StatusBadge, Textarea, useAuth, useToast } from '../../lib/ui.jsx';
+import {
+  Badge, Button, Empty, Field, Icon, Input, LoadFailed, Loading, Modal, Photo, SectionHead,
+  StatusBadge, Textarea, useAuth, useAutoRetry, useToast,
+} from '../../lib/ui.jsx';
 
 const ACTIVE = ['pending_payment', 'paid', 'accepted', 'preparing', 'ready_for_pickup', 'open_for_shoppers',
   'shopper_assigned', 'shopping', 'awaiting_approval', 'approved', 'purchased', 'ready_for_delivery',
@@ -17,10 +20,23 @@ export function Orders() {
   const [orders, setOrders] = useState(null);
   const nav = useNavigate();
 
-  useEffect(() => {
-    api.get('/api/orders?limit=50').then((r) => setOrders(r.orders)).catch(() => setOrders([]));
-  }, []);
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    api.get('/api/orders?limit=50').then((r) => setOrders(r.orders)).catch(setError);
+  };
+  useEffect(() => { load(); }, []);
+  useAutoRetry(load, Boolean(error));
 
+  if (error && !orders) {
+    // "no orders" is a statement about the customer's account. A failed request
+    // is a statement about the phone. Never print the first from the second.
+    return (
+      <div className="page">
+        <LoadFailed what="your orders" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (!orders) return <Loading />;
   const list = orders.filter((o) => (tab === 'active' ? ACTIVE.includes(o.status) : !ACTIVE.includes(o.status)));
 
@@ -94,8 +110,13 @@ export function OrderDetail() {
   const toast = useToast();
   const nav = useNavigate();
 
-  const load = () => api.get(`/api/orders/${id}`).then(setData).catch(() => setData(null));
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    return api.get(`/api/orders/${id}`).then(setData).catch(setError);
+  };
   useEffect(() => { load(); }, [id]);
+  useAutoRetry(load, Boolean(error));
   useEffect(() => {
     const t = setInterval(() => {
       api.get(`/api/orders/${id}/tracking`).then(setTracking).catch(() => {});
@@ -105,6 +126,13 @@ export function OrderDetail() {
   }, [id]);
   useEffect(() => { chatRef.current?.scrollTo({ top: 99999 }); }, [data?.messages?.length, tab]);
 
+  if (error && !data) {
+    return (
+      <div className="page page-tight">
+        <LoadFailed what="this order" error={error} onRetry={load} />
+      </div>
+    );
+  }
   if (!data) return <Loading />;
   const { order, messages, receipts, payment } = data;
   // what the office has actually paid back, and where it went

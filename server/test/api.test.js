@@ -1509,3 +1509,65 @@ test('43. a shop cannot decline an order the rider already collected', async () 
   assert.match(note.body, /wallet/i, 'and the customer is told where the money went');
   assert.doesNotMatch(note.body, /have not been charged/i, 'no false comfort when money was taken');
 });
+
+test('44. cash a rider collects is tracked, refundable and has to be handed over', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  const rider = await login('rider@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+  await api('/api/worker/availability', { method: 'POST', token: rider, body: { available: true } });
+
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = (await api('/api/products?limit=200')).body.products;
+  const item = products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 2 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'cash' },
+  });
+  const order = placed.body.order;
+  assert.equal(order.payment_status, 'paid_cash');
+
+  await api(`/api/merchant/orders/${order.id}/accept`, { method: 'POST', token: merchant });
+  await api(`/api/merchant/orders/${order.id}/ready`, { method: 'POST', token: merchant });
+  await api(`/api/worker/jobs/${order.id}/accept`, { method: 'POST', token: rider });
+  await api(`/api/worker/jobs/${order.id}/pickup`, { method: 'POST', token: rider });
+  await api(`/api/worker/jobs/${order.id}/in-transit`, { method: 'POST', token: rider });
+  const pin = (await api(`/api/orders/${order.id}`, { token: customer })).body.order.delivery_pin;
+  const delivered = await api(`/api/worker/jobs/${order.id}/deliver`, { method: 'POST', token: rider, body: { pin } });
+  assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
+
+  // the notes in the rider's pocket are now on the books, minus the fee they keep
+  const cash = await api('/api/admin/cash', { token: admin });
+  const record = cash.body.records.find((r) => r.order_id === order.id);
+  assert.ok(record, 'a cash record exists for the delivery');
+  assert.equal(record.collected, order.total - order.delivery_fee, 'the rider keeps their delivery fee');
+  assert.equal(record.outstanding, record.collected);
+
+  // and they cannot withdraw money they are still holding in cash
+  const earnings = await api('/api/worker/earnings', { token: rider });
+  assert.equal(earnings.body.cash.outstanding >= record.collected, true, 'the rider app shows it');
+  const tooMuch = await api('/api/worker/payouts', { method: 'POST', token: rider, body: { amount: earnings.body.balance } });
+  assert.equal(tooMuch.status, 400, 'a rider holding cash cannot withdraw the full balance');
+  assert.match(tooMuch.body.error, /holding/i);
+  assert.match(tooMuch.body.error, /hand the cash over/i, 'and it says what to do');
+
+  // a refund pays the customer from the wallet, so the rider owes that much less
+  const refund = await api(`/api/admin/orders/${order.id}/refund`, { method: 'POST', token: admin, body: { amount: 500, reason: 'One item missing' } });
+  assert.equal(refund.status, 200, JSON.stringify(refund.body));
+  const afterRefund = (await api('/api/admin/cash', { token: admin })).body.records.find((r) => r.order_id === order.id);
+  assert.equal(afterRefund.outstanding, record.collected - 500, 'the refund came off the cash handover');
+
+  // the office takes the cash, the ledger clears
+  const cleared = await api(`/api/admin/cash/${record.id}/clear`, { method: 'POST', token: admin, body: { note: 'Counted at the office' } });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+  assert.equal(cleared.body.cleared, record.collected - 500);
+  const finalCash = (await api('/api/admin/cash', { token: admin })).body.records.find((r) => r.order_id === order.id);
+  assert.equal(finalCash.status, 'cleared');
+  assert.equal(finalCash.outstanding, 0, 'nothing left owed on that order');
+
+  const again = await api(`/api/admin/cash/${record.id}/clear`, { method: 'POST', token: admin });
+  assert.equal(again.status, 400, 'and it cannot be cleared twice');
+  assert.match(again.body.error, /already/i);
+});

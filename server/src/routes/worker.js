@@ -3,6 +3,7 @@ import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { asyncHandler, bad, forbidden, notFound, now, requireFields, uid } from '../lib/util.js';
 import { notify, event, walletBalance, walletEntry, audit } from '../lib/settings.js';
+import { cashForRider } from '../lib/cash.js';
 import { acceptJob, declineJob, offerJob, publicOrder, transition, settleOrder, orderLabel, acceptableFor, isOpenForWork, whenLabel } from '../lib/orders.js';
 
 const router = Router();
@@ -448,6 +449,7 @@ router.get(
       balance: walletBalance(req.user.id),
       entries,
       payouts,
+      cash: req.user.role === 'rider' ? cashForRider(req.user.id) : { outstanding: 0, records: [] },
       summary: {
         today: sum(new Date().toISOString().slice(0, 10) + 'T00:00'),
         week: sum(weekStart),
@@ -483,6 +485,20 @@ router.post(
     }
 
     const balance = walletBalance(req.user.id);
+    /*
+     * Earnings are withdrawn from the wallet, but cash-on-delivery money in a
+     * rider's pocket is BUYBUDDY's, not theirs. Paying it out before it has been
+     * handed over pays the same money twice, so it is held back — and the message
+     * says exactly how much and why, with the number that is actually available.
+     */
+    const cashOwed = req.user.role === 'rider' ? cashForRider(req.user.id).outstanding : 0;
+    const withdrawable = Math.max(0, balance - cashOwed);
+    if (cashOwed > 0 && amount > withdrawable) {
+      throw bad(
+        `You are holding ₦${cashOwed.toLocaleString()} of cash from cash-on-delivery orders, so ₦${withdrawable.toLocaleString()} ` +
+        `of your ₦${balance.toLocaleString()} is available to withdraw. Hand the cash over to BUYBUDDY and the full balance opens up.`
+      );
+    }
     if (amount > balance) throw bad(`You can withdraw up to ₦${balance.toLocaleString()}.`);
     const p = profile(req.user.id);
     if (!p?.account_number) throw bad('Add your bank account details before requesting a withdrawal.');

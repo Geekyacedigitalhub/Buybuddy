@@ -3,6 +3,7 @@ import { sendSmsInBackground } from './sms.js';
 import { settingsAll, notify, event, walletEntry } from './settings.js';
 import { awardLoyalty, rewardReferralIfEligible } from './growth.js';
 import { bad, forbidden, money, now, uid, clamp, fakePin } from './util.js';
+import { openCashRecord } from './cash.js';
 
 /* ------------------------------------------------------------------------ *
  * ORDER LIFECYCLE
@@ -139,6 +140,13 @@ export function transition(orderId, next, { actor = null, actorRole = 'system', 
   db.prepare(`UPDATE orders SET ${sets} WHERE id = @id`).run({ ...patch, id: orderId });
 
   event(orderId, { actorId: actor?.id, actorRole, type: `status:${next}`, message: note || orderLabel(next), meta });
+  /*
+   * A cash order puts real notes in a rider's hand. Record them here, once, so
+   * the money can be asked for later and a refund can be taken off it.
+   */
+  if (next === 'delivered') {
+    try { openCashRecord(orderId); } catch (e) { console.warn('[orders] cash record failed:', e.message); }
+  }
   notifyParties(order, next, note);
   return db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
 }

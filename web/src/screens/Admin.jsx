@@ -127,7 +127,74 @@ function Overview() {
           </table>
         </div>
       </div>
+
+      <Modal
+        open={!!clearing}
+        onClose={() => setClearing(null)}
+        title="Mark cash as received"
+        footer={<Button block onClick={() => markCash(clearing, 'Cash handed over at the office')}>{`Yes — I have the ${naira(clearing?.outstanding || 0)}`}</Button>}
+      >
+        <div className="sub">
+          Confirm that <strong>{clearing?.rider_name || 'this rider'}</strong> has handed over{' '}
+          <strong>{naira(clearing?.outstanding || 0)}</strong> for {clearing?.code}. The rider's cash-in-hand
+          goes to zero and they can withdraw their full balance again.
+        </div>
+      </Modal>
+
+      <RejectPayout
+        payout={rejecting}
+        onClose={() => setRejecting(null)}
+        onSubmit={(reason) => decide(rejecting, 'reject', reason)}
+      />
     </Shell>
+  );
+}
+
+/** Rejecting a withdrawal returns a rider's money, so it needs a reason they can read. */
+function RejectPayout({ payout, onClose, onSubmit }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const PRESETS = [
+    'Bank details could not be verified',
+    'Cash in hand not handed over yet',
+    'Account name does not match',
+    'Duplicate request',
+  ];
+  return (
+    <Modal
+      open={!!payout}
+      onClose={onClose}
+      title={`Reject ${payout?.worker_name || 'this'} withdrawal`}
+      footer={(
+        <div className="col" style={{ gap: 10 }}>
+          {error && <div className="tiny" style={{ color: 'var(--danger)' }}>{error}</div>}
+          <div className="row" style={{ gap: 8 }}>
+            <Button variant="ghost" className="grow" onClick={onClose}>Keep it</Button>
+            <Button
+              variant="danger"
+              className="grow"
+              onClick={() => {
+                if (reason.trim().length < 5) return setError('Say why — the rider sees this and needs to know what to fix.');
+                onSubmit(reason.trim());
+              }}
+            >
+              Reject and return {naira(payout?.amount || 0)}
+            </Button>
+          </div>
+        </div>
+      )}
+    >
+      <div className="sub" style={{ marginBottom: 10 }}>
+        {naira(payout?.amount || 0)} goes straight back into {payout?.worker_name}'s wallet. Tell them what to fix
+        so they can request again.
+      </div>
+      <div className="row wrap" style={{ gap: 6, marginBottom: 8 }}>
+        {PRESETS.map((r) => (
+          <button key={r} type="button" className={`chip ${reason === r ? 'active' : ''}`} onClick={() => { setReason(r); setError(''); }}>{r}</button>
+        ))}
+      </div>
+      <Textarea value={reason} onChange={(e) => { setReason(e.target.value); setError(''); }} rows={3} placeholder="Reason the rider will see" />
+    </Modal>
   );
 }
 
@@ -467,6 +534,16 @@ function Merchants() {
     try {
       await api.post(`/api/admin/merchants/${store.id}/decision`, { decision, reason });
       toast.success(`Store ${decision}d`);
+      setRejecting(null);
+      load();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const markCash = async (record, note) => {
+    try {
+      const r = await api.post(`/api/admin/cash/${record.id}/clear`, { note });
+      toast.success(`₦${r.cleared.toLocaleString()} marked as received — the rider has been told`);
+      setClearing(null);
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -538,6 +615,16 @@ function Workers() {
     try {
       await api.post(`/api/admin/workers/${w.id}/decision`, { decision, reason });
       toast.success(`Worker ${decision}d`);
+      setRejecting(null);
+      load();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const markCash = async (record, note) => {
+    try {
+      const r = await api.post(`/api/admin/cash/${record.id}/clear`, { note });
+      toast.success(`₦${r.cleared.toLocaleString()} marked as received — the rider has been told`);
+      setClearing(null);
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -594,15 +681,17 @@ function Workers() {
 
 function Finance() {
   const [data, setData] = useState(null);
+  const [cash, setCash] = useState(null);
+  const [clearing, setClearing] = useState(null);
+  const [rejecting, setRejecting] = useState(null);
   const toast = useToast();
-  const load = () => api.get('/api/admin/finance').then(setData).catch(() => setData(null));
+  const load = () => {
+    api.get('/api/admin/finance').then(setData).catch(() => setData(null));
+    api.get('/api/admin/cash').then(setCash).catch(() => setCash(null));
+  };
   useEffect(() => { load(); }, []);
 
-  const decide = async (payout, decision) => {
-    const reason = decision === 'reject'
-      ? prompt(`Why is ${payout.worker_name}'s ₦${payout.amount.toLocaleString()} withdrawal being rejected? They will see this.`, 'Bank details could not be verified')
-      : undefined;
-    if (decision === 'reject' && reason === null) return;
+  const decide = async (payout, decision, reason) => {
     try {
       await api.post(`/api/admin/payouts/${payout.id}/decision`, { decision, reason });
       toast.success(
@@ -610,6 +699,16 @@ function Finance() {
           ? `Rejected — ₦${payout.amount.toLocaleString()} returned to ${payout.worker_name}`
           : `Payout ${decision}`,
       );
+      setRejecting(null);
+      load();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const markCash = async (record, note) => {
+    try {
+      const r = await api.post(`/api/admin/cash/${record.id}/clear`, { note });
+      toast.success(`₦${r.cleared.toLocaleString()} marked as received — the rider has been told`);
+      setClearing(null);
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -624,6 +723,42 @@ function Finance() {
         <Kpi label="Refunded" value={naira(data.totals.refunded)} />
         <Kpi label="Payouts requested" value={naira(data.totals.payouts_requested)} tone="var(--orange)" />
       </div>
+
+      {cash && cash.records.length > 0 && (
+        <div className="card card-flush" style={{ marginBottom: 16 }}>
+          <div style={{ padding: 14 }} className="row-between">
+            <div>
+              <div className="h3">Cash riders are holding</div>
+              <div className="tiny muted">Cash-on-delivery money the customer has already paid. Mark it received when it reaches you.</div>
+            </div>
+            <div className="mono strong" style={{ color: cash.outstanding_total ? 'var(--orange)' : 'var(--ok)', fontSize: 18 }}>
+              {naira(cash.outstanding_total)}
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Order</th><th>Rider</th><th>Collected</th><th>Refunded</th><th>Still owed</th><th>Status</th><th /></tr></thead>
+              <tbody>
+                {cash.records.map((r) => (
+                  <tr key={r.id}>
+                    <td className="mono strong">{r.code || '—'}</td>
+                    <td className="sub">{r.rider_name || 'No rider assigned'}</td>
+                    <td className="mono">{naira(r.collected)}</td>
+                    <td className="mono">{r.refunded ? `−${naira(r.refunded)}` : '—'}</td>
+                    <td className="mono strong">{naira(r.outstanding)}</td>
+                    <td><Badge tone={r.status === 'open' ? 'badge-warn' : 'badge-ok'}>{r.status === 'open' ? 'Outstanding' : 'Received'}</Badge></td>
+                    <td>
+                      {r.status === 'open' && (
+                        <Button size="sm" onClick={() => setClearing(r)}>Mark cash received</Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card card-flush" style={{ marginBottom: 16 }}>
         <div style={{ padding: 14 }} className="h3">Payout requests</div>
@@ -642,7 +777,7 @@ function Finance() {
                     {p.status === 'requested' && (
                       <div className="row" style={{ gap: 6 }}>
                         <Button size="sm" onClick={() => decide(p, 'approve')}>Approve</Button>
-                        <Button size="sm" variant="danger" onClick={() => decide(p, 'reject')}>Reject &amp; refund</Button>
+                        <Button size="sm" variant="danger" onClick={() => setRejecting(p)}>Reject &amp; refund</Button>
                       </div>
                     )}
                     {p.status === 'approved' && <Button size="sm" onClick={() => decide(p, 'pay')}>Mark paid</Button>}

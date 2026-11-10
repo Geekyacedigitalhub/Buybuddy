@@ -485,6 +485,27 @@ function Earnings() {
         </div>
       </div>
 
+      {data.cash?.outstanding > 0 && (
+        <div className="card col" style={{ gap: 10, borderColor: '#f0dfb4', background: '#FFFBF2' }}>
+          <div className="row-between">
+            <div className="h3">Cash in hand</div>
+            <span className="mono strong" style={{ color: 'var(--orange)' }}>{naira(data.cash.outstanding)}</span>
+          </div>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            You collected this in cash on delivery orders. Your delivery fee is already yours — hand the rest
+            to BUYBUDDY when the office asks, and this clears. Withdrawals wait until cash in hand is clear.
+          </p>
+          <div className="col" style={{ gap: 6 }}>
+            {data.cash.records.filter((r) => r.status === 'open').map((r) => (
+              <div key={r.id} className="row-between" style={{ fontSize: 13 }}>
+                <span className="mono sub">{r.code}</span>
+                <span className="mono strong">{naira(r.outstanding)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card col" style={{ gap: 10 }}>
         <div className="h3">Withdraw to bank</div>
         <div className="row" style={{ gap: 8 }}>

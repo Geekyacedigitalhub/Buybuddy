@@ -4,6 +4,7 @@ import { settingsAll, notify, event, walletEntry, walletBalance } from './settin
 import { bad, hmacSha512, money, now, uid } from './util.js';
 import { offerJob, transition } from './orders.js';
 import { pointsEntry } from './growth.js';
+import { applyRefundToCash } from './cash.js';
 
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
 const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || '';
@@ -547,6 +548,14 @@ export async function refundPayment(orderId, { amount, reason, actor, returnPoin
     }
     if (!sentToProvider) {
       walletEntry(order.customer_id, { type: 'credit', amount: amt, orderId, description: `Refund — ${order.code}` });
+      /*
+       * Cash on delivery: the customer's refund is now spent-able wallet money,
+       * so the rider must hand over that much less of the notes they collected.
+       * Without this, BUYBUDDY pays the customer and still asks for the full sum.
+       */
+      if (order.payment_status === 'paid_cash') {
+        try { applyRefundToCash(orderId, amt); } catch (e) { console.warn('[payments] cash refund adjust failed:', e.message); }
+      }
     }
     db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?').run(
       fully ? 'refunded' : order.payment_status,

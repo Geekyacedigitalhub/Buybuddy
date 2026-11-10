@@ -8,6 +8,7 @@ import { refundPayment, paymentModes, paystackReachability } from '../lib/paymen
 import { sendSms, smsStatus } from '../lib/sms.js';
 import { issueResetCode } from './accounts.js';
 import { dumpDatabase, restoreDatabase, tableOrder } from '../lib/backup.js';
+import { listCash, clearCash } from '../lib/cash.js';
 
 const router = Router();
 // Scope the admin guard to /admin/* so this router cannot swallow (and 403)
@@ -680,6 +681,30 @@ router.post(
     );
     audit(req, 'ticket.resolve', 'ticket', ticket.id, { resolution: req.body?.resolution });
     res.json({ ok: true });
+  })
+);
+
+/* --------------------------- cash on delivery ---------------------------- */
+
+/*
+ * Cash orders leave real money in riders' pockets. This is the list of what is
+ * still owed to BUYBUDDY, and the button that clears it when the money arrives.
+ */
+router.get(
+  '/admin/cash',
+  asyncHandler(async (req, res) => {
+    res.json(listCash());
+  })
+);
+
+router.post(
+  '/admin/cash/:id/clear',
+  asyncHandler(async (req, res) => {
+    const result = clearCash(req.params.id, { note: req.body?.note });
+    if (!result) throw notFound('No cash record with that id.');
+    if (result.alreadyCleared) throw bad('That cash was already marked as handed over.');
+    audit(req, 'cash.clear', 'cod_cash', req.params.id, { amount: result.cleared });
+    res.json({ ok: true, cleared: result.cleared, record: result.record });
   })
 );
 

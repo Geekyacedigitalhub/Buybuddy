@@ -149,6 +149,8 @@ function DeclineModal({ order, onClose, onDone }) {
 function Dashboard({ me, reload }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
+  // hooks must all run before the first early return, or React throws #310
+  const [declining, setDeclining] = useState(null);
   const toast = useToast();
   const nav = useNavigate();
 
@@ -157,8 +159,6 @@ function Dashboard({ me, reload }) {
 
   if (!data) return <Loading block />;
   const { store, metrics, pending_orders, active_orders, low_stock, chart } = data;
-
-  const [declining, setDeclining] = useState(null);
 
   const act = async (order, action) => {
     setBusy(true);

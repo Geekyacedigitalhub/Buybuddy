@@ -336,8 +336,27 @@ export function Wallet() {
 export function Favourites() {
   const [items, setItems] = useState(null);
   const nav = useNavigate();
-  useEffect(() => { api.get('/api/favourites').then((r) => setItems(r.favourites)).catch(() => setItems([])); }, []);
+  const { user } = useAuth();
+  /* A signed-out visitor has no saved list at all — telling them "nothing saved
+     yet" hides the real reason and leaves them tapping hearts that go nowhere. */
+  useEffect(() => {
+    if (!user) return setItems([]);
+    api.get('/api/favourites').then((r) => setItems(r.favourites)).catch(() => setItems([]));
+  }, [user]);
   if (!items) return <Loading />;
+  if (!user) {
+    return (
+      <div className="page page-tight col">
+        <SectionHead title="Favourites" />
+        <Empty
+          icon="heart"
+          title="Sign in to keep a favourites list"
+          body="Hearts you tap are saved to your account, so they are waiting for you on any phone you sign in on."
+          action={<Button onClick={() => nav('/login')}>Sign in</Button>}
+        />
+      </div>
+    );
+  }
   return (
     <div className="page page-tight col">
       <SectionHead title="Favourites" />

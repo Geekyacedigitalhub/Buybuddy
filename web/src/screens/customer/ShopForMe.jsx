@@ -189,10 +189,11 @@ export default function ShopForMe() {
             </div>
             <Input value={it.description} onChange={(e) => setItem(idx, { description: e.target.value })}
               placeholder="e.g. Cerelac baby cereal 400g, or “the perfume in this photo”" />
-            <div className="row" style={{ gap: 8 }}>
-              <Field label="Qty"><Input type="number" min="1" value={it.qty} onChange={(e) => setItem(idx, { qty: e.target.value })} style={{ width: 78 }} /></Field>
-              <Field label="Expected price (₦)"><Input type="number" min="0" value={it.target_price} onChange={(e) => setItem(idx, { target_price: e.target.value })} placeholder="Optional" /></Field>
-              <Field label="Photo">
+            {/* wraps on a phone: three columns squeezed the photo button off the card */}
+            <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
+              <Field label="Qty" style={{ flex: '0 0 74px' }}><Input type="number" min="1" value={it.qty} onChange={(e) => setItem(idx, { qty: e.target.value })} /></Field>
+              <Field label="Expected price (₦)" style={{ flex: '1 1 130px' }}><Input type="number" min="0" value={it.target_price} onChange={(e) => setItem(idx, { target_price: e.target.value })} placeholder="Optional" /></Field>
+              <Field label="Photo" style={{ flex: '0 0 auto' }}>
                 <label className="btn btn-ghost" style={{ height: 42 }}>
                   <Icon name="camera" size={16} /> {it.image ? 'Change' : 'Add'}
                   <input type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && upload(idx, e.target.files[0])} />

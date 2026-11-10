@@ -117,7 +117,9 @@ export function Cart() {
             ? 'This store is closed'
             : worst
               ? `Add ${naira(worst.shortfall)} more to check out`
-              : `Go to checkout · ${naira(cart.subtotal)}`;
+              /* the subtotal is not the total — delivery and service fees are
+                 added on the next screen, so the button must not promise one */
+              : 'Go to checkout';
           return (
             <Button size="lg" block style={{ marginTop: 14 }} onClick={() => nav('/checkout')} disabled={Boolean(closed || worst)}>
               {label}

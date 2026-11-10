@@ -73,8 +73,8 @@ export const Button = ({ variant = 'primary', size, block, className = '', child
   </button>
 );
 
-export const Field = ({ label, hint, children }) => (
-  <label className="field">
+export const Field = ({ label, hint, children, style }) => (
+  <label className="field" style={style}>
     {label && <span className="label">{label}</span>}
     {children}
     {hint && <span className="hint">{hint}</span>}

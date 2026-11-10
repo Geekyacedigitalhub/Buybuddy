@@ -1,5 +1,5 @@
 import { AskHost } from './lib/ask.jsx';
-import React, { useEffect } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, CartProvider, Logo, Icon, useAuth, useCart, Loading, ToastProvider } from './lib/ui.jsx';
 import { naira, hasApiBase, isNativeApp } from './lib/api.js';
@@ -8,13 +8,50 @@ import ServerSetup from './screens/ServerSetup.jsx';
 
 import AuthScreen from './screens/Auth.jsx';
 import { Home, Browse, StorePage, ProductPage, SearchPage } from './screens/customer/Shop.jsx';
-import { Cart, Checkout, PaymentReturn, SandboxPay } from './screens/customer/Checkout.jsx';
-import { Orders, OrderDetail } from './screens/customer/Orders.jsx';
-import ShopForMe from './screens/customer/ShopForMe.jsx';
-import { Account, Wallet, Rewards, Favourites, Addresses, Notifications, Support } from './screens/customer/Account.jsx';
-import WorkerApp from './screens/Worker.jsx';
-import MerchantApp from './screens/Merchant.jsx';
-import AdminApp from './screens/Admin.jsx';
+
+/*
+ * What a phone on a slow network actually has to download before it can shop.
+ *
+ * Everything used to arrive in one 419 KB script — the admin panel, the merchant
+ * console, the rider's job board — for a customer who only wanted the home
+ * screen. Browsing (home, search, category, store, product) stays in the first
+ * bundle because that is the path everyone walks; the rest is split by role and
+ * fetched when it is opened, then cached forever by the service worker.
+ */
+const lazyNamed = (loader, name) => React.lazy(() => loader().then((m) => ({ default: m[name] })));
+
+const Cart = lazyNamed(() => import('./screens/customer/Checkout.jsx'), 'Cart');
+const Checkout = lazyNamed(() => import('./screens/customer/Checkout.jsx'), 'Checkout');
+const PaymentReturn = lazyNamed(() => import('./screens/customer/Checkout.jsx'), 'PaymentReturn');
+const SandboxPay = lazyNamed(() => import('./screens/customer/Checkout.jsx'), 'SandboxPay');
+const Orders = lazyNamed(() => import('./screens/customer/Orders.jsx'), 'Orders');
+const OrderDetail = lazyNamed(() => import('./screens/customer/Orders.jsx'), 'OrderDetail');
+const Account = lazyNamed(() => import('./screens/customer/Account.jsx'), 'Account');
+const Wallet = lazyNamed(() => import('./screens/customer/Account.jsx'), 'Wallet');
+const Rewards = lazyNamed(() => import('./screens/customer/Account.jsx'), 'Rewards');
+const Favourites = lazyNamed(() => import('./screens/customer/Account.jsx'), 'Favourites');
+const Addresses = lazyNamed(() => import('./screens/customer/Account.jsx'), 'Addresses');
+const Notifications = lazyNamed(() => import('./screens/customer/Account.jsx'), 'Notifications');
+const Support = lazyNamed(() => import('./screens/customer/Account.jsx'), 'Support');
+const ShopForMe = React.lazy(() => import('./screens/customer/ShopForMe.jsx'));
+
+const WorkerApp = React.lazy(() => import('./screens/Worker.jsx'));
+const MerchantApp = React.lazy(() => import('./screens/Merchant.jsx'));
+const AdminApp = React.lazy(() => import('./screens/Admin.jsx'));
+
+// The screens a customer opens right after landing. Fetched while the browser is
+// idle, so the first tap on Orders or the cart does not wait for a download.
+const WARM = {
+  customer: [
+    () => import('./screens/customer/Orders.jsx'),
+    () => import('./screens/customer/Checkout.jsx'),
+    () => import('./screens/customer/Account.jsx'),
+  ],
+  shopper: [() => import('./screens/Worker.jsx')],
+  rider: [() => import('./screens/Worker.jsx')],
+  merchant: [() => import('./screens/Merchant.jsx')],
+  admin: [() => import('./screens/Admin.jsx')],
+};
 
 /* ------------------------------- guards ---------------------------------- */
 
@@ -81,7 +118,9 @@ function CustomerShell({ children }) {
           </button>
         </div>
       </div>
-      <main className="grow">{children}</main>
+      <main className="grow">
+        <Suspense fallback={<Loading label="Opening…" />}>{children}</Suspense>
+      </main>
       <nav className="bottom-nav">
         <div className="bottom-nav-inner">
           {tabs.map((t) => (
@@ -190,7 +229,9 @@ function WorkerShell({ children }) {
           <button className="btn btn-ghost btn-icon" onClick={logout} aria-label="Log out"><Icon name="logout" size={18} /></button>
         </div>
       </div>
-      <main className="grow">{children}</main>
+      <main className="grow">
+        <Suspense fallback={<Loading label="Opening…" />}>{children}</Suspense>
+      </main>
       <nav className="bottom-nav">
         <div className="bottom-nav-inner">
           {tabs.map((t) => (
@@ -210,6 +251,29 @@ function WorkerShell({ children }) {
 }
 
 /* ------------------------------ app ------------------------------------- */
+
+/*
+ * While the phone is idle — nothing to tap, no download in flight — fetch the
+ * screens this role is most likely to open next. It costs nothing anyone can
+ * feel and turns the first tap on Orders from a wait into an instant one.
+ * Failures are ignored: this is an optimisation, not a requirement.
+ */
+function WarmUp() {
+  const { user } = useAuth();
+  useEffect(() => {
+    const list = (user && WARM[user.role]) || [];
+    if (!list.length) return undefined;
+    const run = () => list.forEach((load) => load().catch(() => {}));
+    const idle = window.requestIdleCallback
+      ? window.requestIdleCallback(run, { timeout: 3000 })
+      : window.setTimeout(run, 1200);
+    return () => {
+      if (window.cancelIdleCallback && typeof idle === 'number') window.cancelIdleCallback(idle);
+      else clearTimeout(idle);
+    };
+  }, [user]);
+  return null;
+}
 
 function LoginRoute() {
   const { user, loading } = useAuth();
@@ -233,6 +297,8 @@ export default function App() {
         <CartProvider>
           {needsServer ? <ServerSetup /> : (
           <HashRouter>
+            <WarmUp />
+            <Suspense fallback={<Loading label="Loading BUYBUDDY…" />}>
             <Routes>
               <Route path="/login" element={<LoginRoute />} />
               <Route path="/pay/:reference" element={<RequireAuth><SandboxPay /></RequireAuth>} />
@@ -269,6 +335,7 @@ export default function App() {
 
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </Suspense>
           </HashRouter>
           )}
         </CartProvider>

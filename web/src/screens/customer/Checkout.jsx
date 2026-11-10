@@ -1,10 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, naira, fmtAddress, pretty, assetUrl } from '../../lib/api.js';
-import {
-  Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, Textarea,
-  useAuth, useCart, useToast,
-} from '../../lib/ui.jsx';
+import { Badge, Button, Empty, Field, Icon, Input, Loading, Modal, Photo, SectionHead, Select, Textarea, useAuth, useCart, useToast } from '../../lib/ui.jsx';
 
 const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -84,7 +81,7 @@ export function Cart() {
       <div className="card card-flush">
         {cart.items.map((item, i) => (
           <div key={item.id} className="row" style={{ gap: 12, padding: 14, borderTop: i ? '1px solid var(--line)' : 'none' }}>
-            <img src={assetUrl(item.image)} alt="" style={{ width: 62, height: 62, borderRadius: 12, objectFit: 'cover', background: 'var(--green-50)' }} />
+            <Photo src={assetUrl(item.image)} sizes="62px" style={{ width: 62, height: 62, borderRadius: 12, objectFit: 'cover', background: 'var(--green-50)' }} />
             <div className="grow">
               <div className="strong" style={{ fontSize: 13.5, lineHeight: 1.3 }}>{item.name}</div>
               <div className="tiny muted">{naira(item.price)} each</div>

@@ -2,10 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { askConfirm } from '../../lib/ask.jsx';
 import { api, naira, shortDate, assetUrl } from '../../lib/api.js';
-import {
-  Badge, Button, Empty, Icon, Loading, Modal, Money, SectionHead, Skeleton, Stars, StatusBadge,
-  Textarea, useAuth, useCart, useToast,
-} from '../../lib/ui.jsx';
+import { Badge, Button, Empty, Icon, Loading, Modal, Money, Photo, SectionHead, Skeleton, Stars, StatusBadge, Textarea, useAuth, useCart, useToast } from '../../lib/ui.jsx';
 
 /* --------------------------------- home ---------------------------------- */
 
@@ -89,11 +86,12 @@ export function Home() {
           style={{ textAlign: 'left', border: 'none', cursor: 'pointer', padding: 0, overflow: 'hidden', position: 'relative' }}
         >
           {banner.image && !banner.image.startsWith('data:') ? (
-            <img
+            <Photo
               src={assetUrl(banner.image)}
               alt=""
+              eager
+              sizes="(max-width: 620px) 92vw, 640px"
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-              loading="lazy"
             />
           ) : null}
           <div style={{
@@ -117,7 +115,7 @@ export function Home() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 10 }}>
           {data.categories.slice(0, 10).map((c) => (
             <Link key={c.id} to={`/category/${c.id}`} className="cat-tile">
-              <img src={categoryPhoto(c.name)} alt="" loading="lazy" />
+              <Photo src={categoryPhoto(c.name)} sizes="92px" />
               <span className="cat-tile-label">{c.name}</span>
             </Link>
           ))}
@@ -243,7 +241,7 @@ export function ProductCard({ product, compact }) {
   return (
     <div className="prod" onClick={() => nav(`/product/${product.id}`)} role="button" tabIndex={0}>
       <div className="prod-img">
-        <img src={assetUrl(product.image)} alt={product.name} loading="lazy" />
+        <Photo src={assetUrl(product.image)} alt={product.name} sizes="(max-width: 620px) 44vw, 210px" />
         {product.compare_at > product.price && (
           <span className="badge badge-orange" style={{ position: 'absolute', top: 8, left: 8 }}>
             -{Math.round(((product.compare_at - product.price) / product.compare_at) * 100)}%
@@ -579,7 +577,7 @@ export function ProductPage() {
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)', gap: 18 }}>
         <div className="card card-flush" style={{ padding: 0 }}>
-          <img src={assetUrl(product.image)} alt={product.name} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
+          <Photo src={assetUrl(product.image)} alt={product.name} eager sizes="(max-width: 620px) 92vw, 460px" style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
         </div>
 
         <div className="col" style={{ gap: 8 }}>

@@ -46,6 +46,51 @@ export function Icon({ name, size = 20, stroke = 1.8, fill = 'none', style }) {
   );
 }
 
+/*
+ * A catalogue photo, at the size it is actually drawn.
+ *
+ * The 640x640 JPEGs are right for the product page and 6x too big for a 92 px
+ * category tile: 40–75 KB each, 380 KB for one home screen. Small WebP/JPEG
+ * versions of every photo in /img/products are built by
+ * scripts/responsive-images.py; this picks one with srcset and keeps the
+ * original for anything else (an uploaded merchant photo, a logo, a data URL).
+ * <picture> carries display:contents so it never becomes a box the layout has to
+ * account for — every `img` selector in the stylesheet still applies.
+ */
+const RESIZABLE = /^(.*?)img\/products\/([A-Za-z0-9_-]+)\.(jpe?g|png)(\?.*)?$/i;
+
+export function Photo({ src, alt = '', sizes = '160px', eager = false, className, style, width, height, ...rest }) {
+  const m = typeof src === 'string' ? src.match(RESIZABLE) : null;
+  const common = {
+    alt,
+    loading: eager ? 'eager' : 'lazy',
+    decoding: 'async',
+    className,
+    style,
+    width,
+    height,
+    ...(eager ? { fetchpriority: 'high' } : {}),
+  };
+  if (!m) return <img src={src} {...common} {...rest} />;
+  const base = `${m[1]}img/products/${m[2]}`;
+  return (
+    <picture style={{ display: 'contents' }}>
+      <source
+        type="image/webp"
+        srcSet={`${base}-160.webp 160w, ${base}-240.webp 240w, ${base}-400.webp 400w, ${base}-640.webp 640w`}
+        sizes={sizes}
+      />
+      <img
+        src={`${base}-400.jpg`}
+        srcSet={`${base}-160.jpg 160w, ${base}-240.jpg 240w, ${base}-400.jpg 400w, ${src} 640w`}
+        sizes={sizes}
+        {...common}
+        {...rest}
+      />
+    </picture>
+  );
+}
+
 export const Logo = ({ size = 36, tagline = false, to = '/' }) => (
   <Link to={to} className="logo">
     {/* The one and only brand mark: the same raster the launcher icon is built

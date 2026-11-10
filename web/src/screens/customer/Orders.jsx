@@ -6,10 +6,7 @@ import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress, assetUr
    demand: the rest of the app stays light and the map still appears instantly. */
 const DeliveryMap = React.lazy(() => import('../../components/DeliveryMap.jsx'));
 import PhotoPicker from '../../components/PhotoPicker.jsx';
-import {
-  Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, StatusBadge, Textarea,
-  useAuth, useToast,
-} from '../../lib/ui.jsx';
+import { Badge, Button, Empty, Field, Icon, Input, Loading, Modal, Photo, SectionHead, StatusBadge, Textarea, useAuth, useToast } from '../../lib/ui.jsx';
 
 const ACTIVE = ['pending_payment', 'paid', 'accepted', 'preparing', 'ready_for_pickup', 'open_for_shoppers',
   'shopper_assigned', 'shopping', 'awaiting_approval', 'approved', 'purchased', 'ready_for_delivery',
@@ -536,7 +533,7 @@ export function OrderDetail() {
           {order.type === 'personal'
             ? (order.shopping_items || []).map((it, i) => (
               <div key={it.id} className="row" style={{ gap: 12, padding: 14, borderTop: i ? '1px solid var(--line)' : 'none' }}>
-                <img src={assetUrl(it.image)} alt="" style={{ width: 46, height: 46, borderRadius: 11, objectFit: 'cover', background: 'var(--green-50)' }} />
+                <Photo src={assetUrl(it.image)} sizes="46px" style={{ width: 46, height: 46, borderRadius: 11, objectFit: 'cover', background: 'var(--green-50)' }} />
                 <div className="grow">
                   <div className="strong" style={{ fontSize: 13.5 }}>{it.description} × {it.qty}</div>
                   {it.proposed_name && <div className="sub">Found: {it.proposed_name}{it.proposed_price ? ` — ${naira(it.proposed_price)}` : ''}</div>}

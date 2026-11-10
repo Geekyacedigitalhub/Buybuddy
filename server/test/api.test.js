@@ -2086,3 +2086,40 @@ test('52. the bell counts what has not been read, and only stops counting when i
   const theirs = (await api('/api/notifications', { token: other })).body;
   assert.equal(theirs.notifications.every((n) => n.title !== 'New on BUYBUDDY' || n.user_id === undefined), true);
 });
+
+/*
+ * 53. The small versions of every product photo exist.
+ *
+ * The app asks for /img/products/x-240.webp etc. If a photo is added without
+ * running web/scripts/responsive-images.py, the browser silently falls back to
+ * the 640 px JPEG and the home screen doubles in weight again — invisible in a
+ * code review, very visible on a 2 GB data plan. So it is a test.
+ */
+test('53. every catalogue photo has its small versions, and they are small', async () => {
+  const dir = path.join(path.dirname(new URL(import.meta.url).pathname), '../../web/public/img/products');
+  const originals = fs.readdirSync(dir).filter((f) => /\.(jpe?g|png)$/i.test(f) && !/-\d+\.(jpe?g|png)$/i.test(f));
+  assert.ok(originals.length >= 20, `expected the catalogue photos, found ${originals.length}`);
+
+  const missing = [];
+  const tooBig = [];
+  for (const file of originals) {
+    const stem = file.replace(/\.(jpe?g|png)$/i, '');
+    for (const size of [160, 240, 400]) {
+      for (const ext of ['webp', 'jpg']) {
+        const p = path.join(dir, `${stem}-${size}.${ext}`);
+        if (!fs.existsSync(p)) missing.push(`${stem}-${size}.${ext}`);
+      }
+    }
+    if (!fs.existsSync(path.join(dir, `${stem}-640.webp`))) missing.push(`${stem}-640.webp`);
+
+    // a tile draws the 240 px version: it must be a fraction of the original
+    const small = path.join(dir, `${stem}-240.webp`);
+    const original = path.join(dir, file);
+    if (fs.existsSync(small)) {
+      const ratio = fs.statSync(small).size / fs.statSync(original).size;
+      if (ratio > 0.5) tooBig.push(`${stem}: ${(ratio * 100).toFixed(0)}% of the original`);
+    }
+  }
+  assert.deepEqual(missing, [], `photos with no small versions: ${missing.join(', ')}`);
+  assert.deepEqual(tooBig, [], `small versions are not small: ${tooBig.join(', ')}`);
+});

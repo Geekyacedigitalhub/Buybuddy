@@ -65,6 +65,85 @@ function NoStore({ onDone }) {
   );
 }
 
+/* -------------------------------- decline --------------------------------- */
+
+const DECLINE_REASONS = [
+  'Out of stock',
+  'Too busy right now',
+  'Closing early today',
+  'Items damaged',
+  'Delivery address unreachable',
+];
+
+/**
+ * Declining an order gives a customer their money back, so it needs a reason and
+ * a moment's thought — a browser prompt() gave neither and looked nothing like
+ * the rest of the app.
+ */
+function DeclineModal({ order, onClose, onDone }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toast = useToast();
+
+  const submit = async () => {
+    const text = reason.trim();
+    if (text.length < 5) return setError('Pick a reason or type at least a few words — the customer sees this.');
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.post(`/api/merchant/orders/${order.id}/reject`, { reason: text });
+      toast.success(res.refunded ? `Declined — ${naira(order.total)} is going back to the customer` : 'Order declined');
+      onDone?.();
+      onClose();
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal
+      open={!!order}
+      onClose={onClose}
+      title={`Decline ${order?.code}`}
+      footer={(
+        <div className="col" style={{ gap: 10 }}>
+          {error && <div className="tiny" style={{ color: 'var(--danger)' }}>{error}</div>}
+          <div className="row" style={{ gap: 8 }}>
+            <Button variant="ghost" className="grow" onClick={onClose} disabled={busy}>Keep the order</Button>
+            <Button variant="danger" className="grow" onClick={submit} disabled={busy}>
+              {busy ? 'Declining…' : 'Decline and refund'}
+            </Button>
+          </div>
+        </div>
+      )}
+    >
+      <div className="sub" style={{ marginBottom: 12 }}>
+        The customer gets {naira(order?.total || 0)} back in full. If you have already accepted this order,
+        a rider may already be on the way — declining it now still works until they collect it.
+      </div>
+      <Field label="Why can’t you fulfil it?">
+        <div className="row wrap" style={{ gap: 6, marginBottom: 8 }}>
+          {DECLINE_REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={`chip ${reason === r ? 'active' : ''}`}
+              onClick={() => { setReason(r); setError(''); }}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+        <Textarea
+          value={reason}
+          onChange={(e) => { setReason(e.target.value); setError(''); }}
+          placeholder="Tell the customer what happened"
+          rows={3}
+        />
+      </Field>
+    </Modal>
+  );
+}
+
 /* ------------------------------- dashboard -------------------------------- */
 
 function Dashboard({ me, reload }) {
@@ -79,18 +158,15 @@ function Dashboard({ me, reload }) {
   if (!data) return <Loading block />;
   const { store, metrics, pending_orders, active_orders, low_stock, chart } = data;
 
+  const [declining, setDeclining] = useState(null);
+
   const act = async (order, action) => {
     setBusy(true);
     try {
       if (action === 'accept') await api.post(`/api/merchant/orders/${order.id}/accept`, {});
       if (action === 'ready') await api.post(`/api/merchant/orders/${order.id}/ready`, {});
-      if (action === 'reject') {
-        const reason = prompt('Reason for rejecting this order?', 'Out of stock');
-        if (reason === null) return setBusy(false);
-        await api.post(`/api/merchant/orders/${order.id}/reject`, { reason });
-      }
-      toast.success('Order updated');
-      load();
+      await load();
+      if (action !== 'reject') toast.success('Order updated');
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
@@ -151,7 +227,7 @@ function Dashboard({ me, reload }) {
                   ) : (
                     <div className="row" style={{ gap: 8, marginTop: 10 }}>
                       <Button size="sm" className="grow" onClick={() => act(o, 'accept')} disabled={busy}>Accept order</Button>
-                      <Button size="sm" variant="danger" onClick={() => act(o, 'reject')} disabled={busy}>Reject</Button>
+                      <Button size="sm" variant="danger" onClick={() => setDeclining(o)} disabled={busy}>Reject</Button>
                     </div>
                   )}
                 </div>
@@ -170,7 +246,10 @@ function Dashboard({ me, reload }) {
                   <div className="spacer" />
                   <span className="mono sub">{naira(o.total)}</span>
                   {(o.status === 'accepted' || o.status === 'preparing') && (
-                    <Button size="sm" variant="ghost" onClick={() => act(o, 'ready')} disabled={busy}>Ready for pickup</Button>
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => act(o, 'ready')} disabled={busy}>Ready for pickup</Button>
+                      <Button size="sm" variant="danger" onClick={() => setDeclining(o)} disabled={busy}>Decline</Button>
+                    </>
                   )}
                 </div>
               ))}
@@ -226,6 +305,8 @@ function Dashboard({ me, reload }) {
           </div>
         </div>
       </div>
+
+      <DeclineModal order={declining} onClose={() => setDeclining(null)} onDone={load} />
     </Shell>
   );
 }
@@ -239,6 +320,8 @@ function Orders() {
 
   const load = () => api.get(`/api/merchant/orders${filter ? `?status=${filter}` : ''}`).then((r) => setOrders(r.orders));
   useEffect(() => { load(); }, [filter]);
+
+  const [declining, setDeclining] = useState(null);
 
   const act = async (order, action) => {
     try {
@@ -274,8 +357,13 @@ function Orders() {
                   <td><StatusBadge status={o.status} /></td>
                   <td className="tiny muted">{timeAgo(o.created_at)}</td>
                   <td>
-                    {o.status === 'paid' && <Button size="sm" onClick={() => act(o, 'accept')}>Accept</Button>}
-                    {['accepted', 'preparing'].includes(o.status) && <Button size="sm" variant="ghost" onClick={() => act(o, 'ready')}>Ready</Button>}
+                    <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      {o.status === 'paid' && <Button size="sm" onClick={() => act(o, 'accept')}>Accept</Button>}
+                      {['accepted', 'preparing'].includes(o.status) && <Button size="sm" variant="ghost" onClick={() => act(o, 'ready')}>Ready</Button>}
+                      {['paid', 'accepted', 'preparing'].includes(o.status) && (
+                        <Button size="sm" variant="ghost" onClick={() => setDeclining(o)}>Decline</Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -283,6 +371,8 @@ function Orders() {
           </table>
         </div>
       )}
+
+      <DeclineModal order={declining} onClose={() => setDeclining(null)} onDone={load} />
     </Shell>
   );
 }

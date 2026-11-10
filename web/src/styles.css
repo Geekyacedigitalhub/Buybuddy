@@ -254,6 +254,12 @@ ul { margin: 0; padding: 0; list-style: none; }
 @media (max-width: 420px) {
   .hide-xs { display: none !important; }
 }
+/* 320 px is a Galaxy A-series with the font size turned up: the topbar keeps
+   search-by-eye (bell, cart) and drops the heart, which is one tap away in
+   Account → Favourites. */
+@media (max-width: 344px) {
+  .hide-xxs { display: none !important; }
+}
 
 /* -------------------------------- chips --------------------------------- */
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }

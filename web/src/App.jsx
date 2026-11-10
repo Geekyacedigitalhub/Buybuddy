@@ -66,7 +66,7 @@ function CustomerShell({ children }) {
               : <button className="btn btn-ghost btn-sm" onClick={() => nav('/login')}>Sign in</button>}
           </div>
           {user && <NotificationsBell role="customer" />}
-          <button className="btn btn-ghost btn-icon" onClick={() => nav('/favourites')} aria-label="Favourites">
+          <button className="btn btn-ghost btn-icon hide-xxs" onClick={() => nav('/favourites')} aria-label="Favourites">
             <Icon name="heart" size={18} />
           </button>
           <button className="btn btn-ghost btn-icon" style={{ position: 'relative' }} onClick={() => nav('/cart')} aria-label="Cart">

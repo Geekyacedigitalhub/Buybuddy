@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { askConfirm } from '../../lib/ask.jsx';
 import { api, naira, shortDate, assetUrl } from '../../lib/api.js';
@@ -491,6 +491,22 @@ export function ProductPage() {
   const toast = useToast();
   const nav = useNavigate();
   const [failed, setFailed] = useState(false);
+  // On a phone the inline Add-to-cart row sits below the fold, behind the fixed
+  // bottom nav, so the main action looked missing. Once that row scrolls out of
+  // view we float a bar holding the price and the button just above the nav.
+  const addRowRef = useRef(null);
+  const [showBuyBar, setShowBuyBar] = useState(false);
+
+  useEffect(() => {
+    const el = addRowRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      ([e]) => setShowBuyBar(!e.isIntersecting),
+      { rootMargin: '-72px 0px -120px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [data]);
 
   useEffect(() => {
     let alive = true;
@@ -588,7 +604,7 @@ export function ProductPage() {
             <Badge>Delivered in ~{store.prep_minutes + 20} min</Badge>
           </div>
 
-          <div className="row" style={{ gap: 10, marginTop: 8 }}>
+          <div className="row" style={{ gap: 10, marginTop: 8 }} ref={addRowRef}>
             <div className="row" style={{ gap: 0, border: '1px solid var(--line)', borderRadius: 12, padding: 4 }}>
               <button className="btn btn-ghost btn-icon" onClick={() => setQty(Math.max(1, qty - 1))} aria-label="Decrease"><Icon name="minus" size={16} /></button>
               <span className="mono" style={{ width: 34, textAlign: 'center', fontWeight: 700 }}>{qty}</span>
@@ -623,6 +639,20 @@ export function ProductPage() {
           <SectionHead title="You may also like" />
           <div className="prod-grid">{related.map((p) => <ProductCard key={p.id} product={p} />)}</div>
         </section>
+      )}
+
+      {showBuyBar && (
+        <div className="pdp-buybar">
+          <div className="row-between" style={{ gap: 12 }}>
+            <div className="col" style={{ gap: 1 }}>
+              <span className="price mono" style={{ fontSize: 16 }}>{naira(product.price * qty)}</span>
+              <span className="tiny muted">{qty} × {naira(product.price)}</span>
+            </div>
+            <Button onClick={add} disabled={!product.in_stock}>
+              <Icon name="bag" size={16} /> {product.in_stock ? 'Add to cart' : 'Out of stock'}
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

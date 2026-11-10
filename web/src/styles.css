@@ -840,3 +840,26 @@ html, body { overflow-x: hidden; }
   .table-wrap .table { min-width: 700px; }
   .table td { white-space: nowrap; }
 }
+
+/* ------------------- product page: phone buy bar --------------------------
+ * The inline Add-to-cart button is under the fold on a 390 px phone and the
+ * fixed bottom nav hides it. This bar rides above the nav instead of over the
+ * "You may also like" grid, and disappears when the real button is on screen.
+ */
+.pdp-buybar { display: none; }
+@media (max-width: 719px) {
+  .pdp-buybar {
+    display: block;
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    z-index: 35;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 20px rgba(13, 30, 24, 0.08);
+    animation: bb-rise 0.2s var(--ease) both;
+  }
+  .pdp-buybar .btn { flex: 0 0 auto; }
+}

@@ -107,7 +107,7 @@ export const StatusBadge = ({ status }) => {
 export const Money = ({ value, old, className = '' }) => (
   <span className={className}>
     <span className="price mono">{naira(value)}</span>
-    {old ? <span className="price-old mono" style={{ marginLeft: 6 }}>{naira(old)}</span> : null}
+    {old ? <span className="price-old mono">{naira(old)}</span> : null}
   </span>
 );
 

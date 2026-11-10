@@ -259,11 +259,12 @@ export function ProductCard({ product, compact }) {
         <div className="prod-name">{product.name}</div>
         {!compact && <div className="tiny muted">{product.store?.name}</div>}
         <div className="spacer" />
-        <div className="row-between" style={{ marginTop: 6 }}>
+        {/* At 172 px the struck-through price used to run under the + button.
+            The price block may wrap onto a second line; the button keeps its gap. */}
+        <div className="prod-foot">
           <Money value={product.price} old={product.compare_at} />
           <button
-            className="btn btn-primary btn-icon"
-            style={{ padding: 6 }}
+            className="btn btn-primary btn-icon prod-add"
             onClick={add}
             disabled={busy || !product.in_stock}
             aria-label={`Add ${product.name} to cart`}

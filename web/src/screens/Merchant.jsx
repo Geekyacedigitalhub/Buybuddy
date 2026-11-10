@@ -461,7 +461,35 @@ function Products({ me }) {
       </div>
 
       {!data ? <Loading /> : data.length === 0 ? <Empty icon="box" title="No products yet" body="Add your first product so customers can order it." action={<Button onClick={() => edit(null)}>Add product</Button>} /> : (
-        <div className="card card-flush table-wrap">
+        <>
+        {/* price and stock are the whole point of this screen — they must not sit
+            off the right edge of a phone */}
+        <div className="col narrow-only" style={{ gap: 10 }}>
+          {data.map((p) => (
+            <div key={p.id} className="tile">
+              <div className="row" style={{ gap: 10 }}>
+                <img src={assetUrl(p.image)} alt="" style={{ width: 42, height: 42, borderRadius: 10, objectFit: 'cover', flex: 'none' }} />
+                <div className="grow">
+                  <div className="strong" style={{ fontSize: 13.5 }}>{p.name}</div>
+                  <div className="tiny muted">{cats.find((c) => c.id === p.category_id)?.name || 'Uncategorised'}</div>
+                </div>
+              </div>
+              <div className="row-between" style={{ marginTop: 10 }}>
+                <span className="mono strong">{naira(p.price)}</span>
+                <div className="row" style={{ gap: 6 }}>
+                  <Badge tone={p.stock === 0 ? 'badge-danger' : p.stock < 6 ? 'badge-warn' : 'badge-ok'}>{p.stock} in stock</Badge>
+                  <Badge tone={p.status === 'active' ? 'badge-ok' : ''}>{p.status}</Badge>
+                </div>
+              </div>
+              <div className="row" style={{ gap: 6, marginTop: 10 }}>
+                <Button size="sm" variant="ghost" className="grow" onClick={() => edit(p)}>Edit</Button>
+                <Button size="sm" variant="ghost" className="grow" onClick={() => toggle(p)}>{p.status === 'active' ? 'Disable' : 'Enable'}</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card card-flush table-wrap wide-only">
           <table className="table">
             <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th /></tr></thead>
             <tbody>
@@ -488,6 +516,7 @@ function Products({ me }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <Modal open={!!open} onClose={() => setOpen(null)} title={open?.new ? 'Add product' : 'Edit product'}

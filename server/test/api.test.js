@@ -1856,3 +1856,48 @@ test('47. a shopper photographs the bag at the shop, and a rider can read their 
     assert.ok(earnings.body.withdrawable <= earnings.body.balance, 'withdrawable never exceeds the balance');
   }
 });
+
+test('48. two riders are offered the same job and only one of them can take it', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  const riderA = await login('rider@buybuddy.ng');
+  const riderB = await login('rider2@buybuddy.ng');
+  await api('/api/worker/availability', { method: 'POST', token: riderA, body: { available: true } });
+  await api('/api/worker/availability', { method: 'POST', token: riderB, body: { available: true } });
+
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = (await api('/api/products?limit=200')).body.products;
+  const item = products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3 && p.price >= 2000);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 1 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet' },
+  });
+  assert.equal(placed.status, 201, JSON.stringify(placed.body));
+  const order = placed.body.order;
+  await api(`/api/merchant/orders/${order.id}/accept`, { method: 'POST', token: merchant });
+  await api(`/api/merchant/orders/${order.id}/ready`, { method: 'POST', token: merchant });
+
+  // both bikes on the road see it — an offer is not a lock
+  const boardA = (await api('/api/worker/dashboard', { token: riderA })).body;
+  const boardB = (await api('/api/worker/dashboard', { token: riderB })).body;
+  assert.ok(boardA.offers.some((o) => o.id === order.id), 'rider A is offered the job');
+  assert.ok(boardB.offers.some((o) => o.id === order.id), 'rider B is offered the same job');
+
+  // the faster tap wins
+  const taken = await api(`/api/worker/jobs/${order.id}/accept`, { method: 'POST', token: riderB });
+  assert.equal(taken.status, 200, JSON.stringify(taken.body));
+  const second = await api(`/api/worker/jobs/${order.id}/accept`, { method: 'POST', token: riderA });
+  assert.equal(second.status, 400, 'the other rider is told, not silently ignored');
+  assert.match(second.body.error, /already been taken|no longer available/i);
+
+  // and the offer disappears from both boards, so nobody is left chasing a dead job
+  const afterA = (await api('/api/worker/dashboard', { token: riderA })).body;
+  const afterB = (await api('/api/worker/dashboard', { token: riderB })).body;
+  assert.equal(afterA.offers.some((o) => o.id === order.id), false);
+  assert.equal(afterB.offers.some((o) => o.id === order.id), false);
+
+  const riderBId = (await api('/api/me', { token: riderB })).body.user.id;
+  const final = (await api(`/api/orders/${order.id}`, { token: customer })).body.order;
+  assert.equal(final.rider_id, riderBId, 'the order belongs to the rider who accepted');
+});

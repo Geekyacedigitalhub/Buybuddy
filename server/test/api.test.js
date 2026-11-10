@@ -460,8 +460,16 @@ test('scheduled delivery: future windows are accepted, invalid ones rejected', a
   });
   assert.equal(rejected.status, 400, 'checkout refuses an invalid window');
 
-  const { order } = await completeMerchantOrder(customer, { extra: { scheduled_for: in3Days } });
-  assert.ok(order.scheduled_for, 'the order stores the chosen slot');
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer,
+    body: { address_id: addressId, payment_method: 'wallet', scheduled_for: in3Days },
+  });
+  assert.equal(placed.status, 201, JSON.stringify(placed.body));
+  assert.ok(placed.body.order.scheduled_for, 'the order stores the chosen slot');
+
+  const merchant = await login('merchant1@buybuddy.ng');
+  const early = await api(`/api/merchant/orders/${placed.body.order.id}/accept`, { method: 'POST', token: merchant });
+  assert.equal(early.status, 400, 'and it waits for its slot instead of being cooked three days early');
 });
 
 test('loyalty: points accrue on completion, redeem at checkout, refund on cancel', async () => {
@@ -1297,4 +1305,58 @@ test('39. a withdrawal sets the money aside instead of promising it twice', asyn
   });
   assert.equal(paid.status, 200);
   assert.equal((await api('/api/wallet', { token: rider })).body.balance, before - 1000, 'paid once, debited once');
+});
+
+test('40. a booked delivery time is kept, not ignored', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = await api('/api/products?limit=200');
+  const green = products.body.products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 2);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: green.id, qty: 2 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+
+  const tomorrow = new Date(Date.now() + 20 * 3600_000).toISOString();
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer,
+    body: { address_id: address.id, payment_method: 'wallet', scheduled_for: tomorrow },
+  });
+  assert.ok([200, 201].includes(placed.status), JSON.stringify(placed.body));
+  const orderId = placed.body.order.id;
+  assert.ok(placed.body.order.scheduled_for, 'the time the customer picked is on the order');
+
+  const tooSoon = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet', scheduled_for: new Date(Date.now() + 60_000).toISOString() },
+  });
+  assert.equal(tooSoon.status, 400, 'a time fifteen minutes away is refused, not silently ignored');
+
+  // the shop is not told to cook now
+  const acceptEarly = await api(`/api/merchant/orders/${orderId}/accept`, { method: 'POST', token: merchant });
+  assert.equal(acceptEarly.status, 400, 'the shop cannot start preparing a day early');
+  assert.match(acceptEarly.body.error, /Booked for/i);
+  assert.match(acceptEarly.body.error, /about an hour before/i);
+
+  const rider = await login('rider@buybuddy.ng');
+  const board = await api('/api/worker/dashboard', { token: rider });
+  assert.ok(!board.body.offers.some((o) => o.id === orderId), 'and no rider is sent to a shut gate');
+
+  // when the slot comes round, the scheduler hands it over
+  const { releaseDueScheduledOrders, isHeld } = await import('../src/lib/orders.js');
+  const { db } = await import('../src/lib/db.js');
+  const fresh = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+  assert.equal(isHeld(fresh), true, `held? scheduled_for=${fresh.scheduled_for} released_at=${fresh.released_at}`);
+
+  const released = releaseDueScheduledOrders(new Date(tomorrow).getTime());
+  assert.ok(released.includes(orderId), `due orders are released (got ${JSON.stringify(released)}, order ${orderId})`);
+
+  const nowOrder = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+  assert.ok(nowOrder.released_at, 'the release is recorded');
+
+  const note = db
+    .prepare("SELECT * FROM notifications WHERE user_id = (SELECT merchant_id FROM stores WHERE id = ?) ORDER BY created_at DESC LIMIT 1")
+    .get(green.store.id);
+  assert.match(note.title, /is due/i, 'the shop is nudged when it is time');
+
+  const acceptNow = await api(`/api/merchant/orders/${orderId}/accept`, { method: 'POST', token: merchant });
+  assert.equal(acceptNow.status, 200, JSON.stringify(acceptNow.body));
 });

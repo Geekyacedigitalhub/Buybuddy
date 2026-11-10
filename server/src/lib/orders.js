@@ -446,6 +446,73 @@ export function settleOrder(orderId) {
  * SERIALISERS
  * ------------------------------------------------------------------------ */
 
+/* ---------------------------- scheduled orders --------------------------- */
+
+/**
+ * A delivery time the customer picked is a promise, not decoration.
+ *
+ * A shop needs roughly an hour from "start cooking" to "hand it to a rider", so a
+ * booked order is held back until that hour before the slot. Before this existed
+ * the store was told to start preparing the moment the order was paid — a
+ * Tuesday 10:00 order was cooked on Monday night and a rider stood at the gate
+ * with cold food.
+ */
+export const SCHEDULE_LEAD_MINUTES = 60;
+
+export const releaseAt = (order) =>
+  order?.scheduled_for ? new Date(new Date(order.scheduled_for).getTime() - SCHEDULE_LEAD_MINUTES * 60_000) : null;
+
+/** True while the order is still waiting for its slot to come round. */
+export function isHeld(order, nowMs = Date.now()) {
+  const at = releaseAt(order);
+  return Boolean(at) && at.getTime() > nowMs;
+}
+
+/** A booked order is open for work once its slot is close — or once it has been released. */
+export const isOpenForWork = (order, nowMs = Date.now()) => Boolean(order?.released_at) || !isHeld(order, nowMs);
+
+export const whenLabel = (iso) =>
+  new Date(iso).toLocaleString('en-NG', {
+    weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos',
+  });
+
+/**
+ * Called every minute. Hands any booked order whose lead time has arrived to the
+ * people who do the work, and says so on the order.
+ */
+export function releaseDueScheduledOrders(nowMs = Date.now()) {
+  const rows = db
+    .prepare("SELECT * FROM orders WHERE scheduled_for IS NOT NULL AND released_at IS NULL AND status IN ('paid','open_for_shoppers')")
+    .all();
+  const released = [];
+  for (const order of rows) {
+    if (isHeld(order, nowMs)) continue;
+    db.prepare('UPDATE orders SET released_at = ?, updated_at = ? WHERE id = ?').run(now(), now(), order.id);
+    if (order.type === 'merchant' && order.store_id) {
+      const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+      if (store) {
+        notify(store.merchant_id, {
+          title: `Booked order ${order.code} is due`,
+          body: `Deliver ${whenLabel(order.scheduled_for)} — accept it now to start preparing.`,
+          kind: 'order',
+          orderId: order.id,
+        });
+      }
+      event(order.id, { type: 'scheduled_released', message: 'The shop was asked to start — the delivery slot is close' });
+    } else {
+      offerJob(order.id, 'shopper');
+      event(order.id, { type: 'scheduled_released', message: 'Shoppers were told to start — the delivery slot is close' });
+    }
+    released.push(order.id);
+  }
+  return released;
+}
+
+const releaseTimer = setInterval(() => {
+  try { releaseDueScheduledOrders(); } catch (e) { console.error('[schedule] release failed:', e.message); }
+}, 60_000);
+if (releaseTimer.unref) releaseTimer.unref();
+
 export function publicOrder(order, { includePrivate = false } = {}) {
   if (!order) return null;
   const items = orderItems(order.id);

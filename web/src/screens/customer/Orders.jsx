@@ -154,7 +154,9 @@ export function OrderDetail() {
           <div className="sub mono">{order.code} · {timeAgo(order.created_at)}</div>
           {order.scheduled_for && (
             <div className="tiny" style={{ color: 'var(--orange)', fontWeight: 700, marginTop: 2 }}>
-              Scheduled for {new Date(order.scheduled_for).toLocaleString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              {order.released_at ? 'Booked for ' : 'Booked for '}
+              {new Date(order.scheduled_for).toLocaleString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              {!order.released_at && ' — work starts about an hour before'}
             </div>
           )}
         </div>
@@ -164,7 +166,13 @@ export function OrderDetail() {
       {/* progress + map */}
       <div className="card">
         <div className="row-between" style={{ marginBottom: 8 }}>
-          <div className="h3">{order.status === 'delivered' ? 'Delivered — confirm to complete' : pretty(order.status)}</div>
+          <div className="h3">
+            {order.status === 'delivered'
+              ? 'Delivered — confirm to complete'
+              : order.scheduled_for && !order.released_at && ['paid', 'paid_cash'].includes(order.status)
+                ? 'Booked — the shop starts about an hour before'
+                : pretty(order.status)}
+          </div>
           {tracking?.eta_minutes && <Badge tone="badge-green"><Icon name="clock" size={12} /> {tracking.eta_minutes} min away</Badge>}
         </div>
         <div className="progress"><div style={{ width: `${Math.min(100, progress)}%` }} /></div>

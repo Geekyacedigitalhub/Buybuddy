@@ -3,7 +3,7 @@ import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { asyncHandler, bad, forbidden, notFound, now, requireFields, uid } from '../lib/util.js';
 import { notify, event, walletBalance, walletEntry, audit } from '../lib/settings.js';
-import { acceptJob, declineJob, offerJob, publicOrder, transition, settleOrder, orderLabel, acceptableFor } from '../lib/orders.js';
+import { acceptJob, declineJob, offerJob, publicOrder, transition, settleOrder, orderLabel, acceptableFor, isOpenForWork, whenLabel } from '../lib/orders.js';
 
 const router = Router();
 const workerOnly = (req, _res, next) => {
@@ -104,6 +104,7 @@ router.get(
         `SELECT j.id AS offer_id, j.created_at AS offered_at, o.* FROM job_offers j JOIN orders o ON o.id = j.order_id
          WHERE j.worker_id = ? AND j.role = ? AND j.status = 'offered'
            AND o.status IN (${acceptable.map(() => '?').join(',')})
+           AND (o.scheduled_for IS NULL OR o.released_at IS NOT NULL)
          ORDER BY j.created_at DESC`
       )
       .all(req.user.id, role, ...acceptable);
@@ -145,6 +146,10 @@ router.post(
     const p = profile(req.user.id);
     if (!p?.verified) throw bad('Your account is still being verified. You cannot accept jobs yet.');
     if (!p.available) throw bad('You are offline. Go online to accept jobs.');
+    const booked = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.orderId);
+    if (booked && !isOpenForWork(booked)) {
+      throw bad(`This one is booked for ${whenLabel(booked.scheduled_for)} — it opens about an hour before.`);
+    }
     const order = acceptJob(req.params.orderId, req.user.id, role);
     audit(req, 'job.accept', 'order', order.id, { role });
     res.json({ order: publicOrder(order) });
@@ -170,7 +175,11 @@ router.post(
     const role = req.body?.role || workerRole(req);
     const targets = acceptableFor(role);
     const order = db
-      .prepare(`SELECT * FROM orders WHERE status IN (${targets.map(() => '?').join(',')}) ORDER BY created_at ASC LIMIT 1`)
+      .prepare(
+        `SELECT * FROM orders WHERE status IN (${targets.map(() => '?').join(',')})
+           AND (scheduled_for IS NULL OR released_at IS NOT NULL)
+         ORDER BY created_at ASC LIMIT 1`
+      )
       .get(...targets);
     if (!order) return res.json({ order: null });
     offerJob(order.id, role);

@@ -137,10 +137,23 @@ function Dashboard({ me, reload }) {
                   <div className="col" style={{ gap: 2, marginTop: 8 }}>
                     {o.items.map((i) => <div key={i.id} className="sub">{i.qty} × {i.name}</div>)}
                   </div>
-                  <div className="row" style={{ gap: 8, marginTop: 10 }}>
-                    <Button size="sm" className="grow" onClick={() => act(o, 'accept')} disabled={busy}>Accept order</Button>
-                    <Button size="sm" variant="danger" onClick={() => act(o, 'reject')} disabled={busy}>Reject</Button>
-                  </div>
+                  {o.scheduled_for && !o.released_at ? (
+                    <div
+                      className="row"
+                      style={{ gap: 8, marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#FFF8EC', border: '1px solid #F3DDB4', alignItems: 'flex-start' }}
+                    >
+                      <Icon name="clock" size={15} style={{ marginTop: 2, color: 'var(--orange)' }} />
+                      <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                        <strong>Booked for {new Date(o.scheduled_for).toLocaleString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.</strong>{' '}
+                        It appears here to accept about an hour before, so it reaches the customer hot. Nothing to do until then.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                      <Button size="sm" className="grow" onClick={() => act(o, 'accept')} disabled={busy}>Accept order</Button>
+                      <Button size="sm" variant="danger" onClick={() => act(o, 'reject')} disabled={busy}>Reject</Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

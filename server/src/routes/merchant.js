@@ -3,7 +3,7 @@ import { db } from '../lib/db.js';
 import { requireAuth, requireRole } from '../lib/auth.js';
 import { asyncHandler, bad, forbidden, notFound, now, paginate, requireFields, slugify, uid } from '../lib/util.js';
 import { notify, event, walletBalance, walletEntry, audit } from '../lib/settings.js';
-import { publicOrder, transition, settleOrder, orderLabel, offerJob } from '../lib/orders.js';
+import { publicOrder, transition, settleOrder, orderLabel, offerJob, isOpenForWork, whenLabel } from '../lib/orders.js';
 
 const router = Router();
 const merchantOnly = requireRole('merchant');
@@ -195,6 +195,9 @@ router.post(
     const store = requireStore(req.user.id);
     const order = db.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(req.params.id, store.id);
     if (!order) throw notFound('Order not found');
+    if (!isOpenForWork(order)) {
+      throw bad(`Booked for ${whenLabel(order.scheduled_for)}. It opens to your kitchen about an hour before, and we will remind you.`);
+    }
     const updated = transition(order.id, 'accepted', { actor: req.user, actorRole: 'merchant', note: `Accepted by ${store.name}` });
     res.json({ order: publicOrder(updated) });
   })
@@ -208,6 +211,9 @@ router.post(
     const store = requireStore(req.user.id);
     const order = db.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(req.params.id, store.id);
     if (!order) throw notFound('Order not found');
+    if (!isOpenForWork(order)) {
+      throw bad(`Booked for ${whenLabel(order.scheduled_for)}. Nothing to hand over yet.`);
+    }
     if (order.status === 'accepted') {
       transition(order.id, 'preparing', { actor: req.user, actorRole: 'merchant', note: 'Store is preparing your order' });
     }

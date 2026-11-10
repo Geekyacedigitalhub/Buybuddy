@@ -12,6 +12,7 @@ import {
   settleOrder,
   transition,
   eligibleWorkers,
+  whenLabel,
 } from '../lib/orders.js';
 import { initPayment, verifyPayment, refundPayment, verifyWalletTopup } from '../lib/payments.js';
 import { pointsEntry, pointsToDiscount, validateSchedule } from '../lib/growth.js';
@@ -151,8 +152,10 @@ router.post(
       }
       event(id, { actorId: req.user.id, actorRole: 'customer', type: 'created', message: `Order placed with ${store.name}` });
       notify(store.merchant_id, {
-        title: `New order ${code}`,
-        body: `${cart.length} item(s) — ₦${fees.total.toLocaleString()}. Accept to start preparing.`,
+        title: scheduledFor ? `Booked order ${code}` : `New order ${code}`,
+        body: scheduledFor
+          ? `${cart.length} item(s) — ₦${fees.total.toLocaleString()}, delivery ${whenLabel(scheduledFor)}. We will nudge you about an hour before so it arrives hot.`
+          : `${cart.length} item(s) — ₦${fees.total.toLocaleString()}. Accept to start preparing.`,
         kind: 'order',
         orderId: id,
       });

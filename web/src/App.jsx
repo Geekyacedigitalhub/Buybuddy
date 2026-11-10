@@ -38,6 +38,7 @@ export const homeFor = (role) =>
 /* ---------------------------- customer shell ----------------------------- */
 
 function CustomerShell({ children }) {
+  useNavHeight();
   const { user } = useAuth();
   const { cart } = useCart();
   const nav = useNavigate();
@@ -98,9 +99,36 @@ function CustomerShell({ children }) {
   );
 }
 
+/*
+ * Publish the bottom nav's real height as --nav-h. Two things cared in pixels
+ * before and got it wrong: the product page's buy bar (which sat inside the nav)
+ * and the space reserved under it (which the last price hid behind).
+ */
+function useNavHeight() {
+  useEffect(() => {
+    const set = () => {
+      const el = document.querySelector('.bottom-nav');
+      if (!el) return;
+      document.documentElement.style.setProperty('--nav-h', `${Math.round(el.getBoundingClientRect().height)}px`);
+    };
+    set();
+    const el = document.querySelector('.bottom-nav');
+    const ro = el && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(set) : null;
+    if (ro && el) ro.observe(el);
+    window.addEventListener('resize', set);
+    window.addEventListener('orientationchange', set);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', set);
+      window.removeEventListener('orientationchange', set);
+    };
+  }, []);
+}
+
 /* ------------------------------ worker shell ----------------------------- */
 
 function WorkerShell({ children }) {
+  useNavHeight();
   const { user, logout } = useAuth();
   const loc = useLocation();
   const nav = useNavigate();

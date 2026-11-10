@@ -166,7 +166,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   padding: 12px 14px;
   box-shadow: var(--shadow-sm);
 }
-.searchbar input { border: none; outline: none; flex: 1; font-size: 15px; background: transparent; }
+/* A flex item will not shrink below its text's natural width unless told to.
+   At 320 px that pushed the Search button 5 px off the screen edge. */
+.searchbar input { border: none; outline: none; flex: 1; min-width: 0; font-size: 15px; background: transparent; }
 
 /* -------------------------------- badges -------------------------------- */
 .badge {
@@ -852,7 +854,11 @@ html, body { overflow-x: hidden; }
     display: block;
     position: fixed;
     left: 0; right: 0;
-    bottom: calc(64px + env(safe-area-inset-bottom));
+    /* The nav is taller than it looks: "Shop for me" wraps to two lines at
+       360 px, and the system font size can grow it further. Its measured height
+       is published as --nav-h, so the bar sits on top of the nav instead of 30 px
+       inside it, on any phone. */
+    bottom: var(--nav-h, 94px);
     z-index: 35;
     padding: 10px 14px;
     background: rgba(255, 255, 255, 0.97);
@@ -862,4 +868,9 @@ html, body { overflow-x: hidden; }
     animation: bb-rise 0.2s var(--ease) both;
   }
   .pdp-buybar .btn { flex: 0 0 auto; }
+
+  /* The bar floats over the page, so the page has to end above it. Without this
+     the last line of the description — or the last price in "You may also like"
+     — could never be scrolled into view: it lived underneath the bar forever. */
+  .pdp-page.has-buybar { padding-bottom: calc(var(--nav-h, 94px) + 74px); }
 }

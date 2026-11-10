@@ -569,7 +569,7 @@ export function ProductPage() {
   };
 
   return (
-    <div className="page page-tight col">
+    <div className={`page page-tight col pdp-page ${showBuyBar ? 'has-buybar' : ''}`}>
       <div className="row-between">
         <button className="btn btn-ghost btn-icon" onClick={() => nav(-1)}><Icon name="left" /></button>
         <button className="btn btn-ghost btn-icon" onClick={toggleFav} aria-label="Favourite">

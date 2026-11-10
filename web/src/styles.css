@@ -824,3 +824,14 @@ html, body { overflow-x: hidden; }
    reads like a different number. Titles shrink instead. */
 .row-between > .mono, .row-between > .money { white-space: nowrap; }
 .row-between > span:first-child, .row-between > div:first-child { min-width: 0; }
+
+/* Wide tables on a phone crushed themselves to a couple of characters per cell.
+   They scroll sideways instead; screens that matter on a phone render their own
+   card list with .narrow-only. */
+.narrow-only { display: none; }
+@media (max-width: 760px) {
+  .wide-only { display: none !important; }
+  .narrow-only { display: block; }
+  .table-wrap .table { min-width: 700px; }
+  .table td { white-space: nowrap; }
+}

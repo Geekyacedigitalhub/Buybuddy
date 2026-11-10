@@ -342,7 +342,35 @@ function Orders() {
         ))}
       </div>
       {!orders ? <Loading /> : orders.length === 0 ? <Empty icon="receipt" title="No orders in this view" /> : (
-        <div className="card card-flush table-wrap">
+        <>
+        {/* A phone cannot show seven columns: it squeezed order codes and naira
+            into two characters per line. Phones get cards, desks get the table. */}
+        <div className="col narrow-only" style={{ gap: 10 }}>
+          {orders.map((o) => (
+            <div key={o.id} className="tile">
+              <div className="row-between">
+                <span className="mono strong">{o.code}</span>
+                <span className="mono strong">{naira(o.total)}</span>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 2 }}>
+                {o.address?.recipient || 'Customer'} · {o.address?.area || 'Lagos'} · {timeAgo(o.created_at)}
+              </div>
+              <div className="sub" style={{ marginTop: 6 }}>{o.items.map((i) => `${i.qty}× ${i.name}`).join(', ')}</div>
+              <div className="row-between" style={{ marginTop: 10 }}>
+                <StatusBadge status={o.status} />
+                <div className="row" style={{ gap: 6 }}>
+                  {o.status === 'paid' && <Button size="sm" onClick={() => act(o, 'accept')}>Accept</Button>}
+                  {['accepted', 'preparing'].includes(o.status) && <Button size="sm" variant="ghost" onClick={() => act(o, 'ready')}>Ready</Button>}
+                  {['paid', 'accepted', 'preparing'].includes(o.status) && (
+                    <Button size="sm" variant="ghost" onClick={() => setDeclining(o)}>Decline</Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card card-flush table-wrap wide-only">
           <table className="table">
             <thead>
               <tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Placed</th><th /></tr>
@@ -370,6 +398,7 @@ function Orders() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <DeclineModal order={declining} onClose={() => setDeclining(null)} onDone={load} />

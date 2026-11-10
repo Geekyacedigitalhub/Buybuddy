@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../lib/auth.js';
 import { asyncHandler, bad, forbidden, notFound, now, paginate, requireFields, slugify, uid } from '../lib/util.js';
 import { notify, event, walletBalance, walletEntry, audit } from '../lib/settings.js';
 import { publicOrder, transition, settleOrder, orderLabel, offerJob, isOpenForWork, whenLabel } from '../lib/orders.js';
+import { refundPayment } from '../lib/payments.js';
 
 const router = Router();
 const merchantOnly = requireRole('merchant');
@@ -231,16 +232,58 @@ router.post(
     const store = requireStore(req.user.id);
     const order = db.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(req.params.id, store.id);
     if (!order) throw notFound('Order not found');
-    const reason = req.body?.reason || 'Store could not fulfil this order';
+    const reason = String(req.body?.reason || '').trim() || 'Store could not fulfil this order';
+
+    /*
+     * Declining is only honest before the food is made and handed over. Without
+     * this guard a shop could decline a paid order that a rider had already
+     * collected, restock the items and refund — while the customer waited at the
+     * gate for a delivery that had been cancelled behind their back.
+     */
+    if (!['paid', 'accepted', 'preparing'].includes(order.status)) {
+      const when = {
+        ready_for_pickup: 'the rider is on the way to collect it',
+        rider_assigned: 'the rider is on the way to collect it',
+        picked_up: 'the rider has collected it',
+        in_transit: 'it is already out for delivery',
+        delivered: 'it has been delivered',
+        completed: 'it is finished',
+      }[order.status];
+      throw bad(
+        `This order cannot be declined any more${when ? ` — ${when}` : ''}. ` +
+        `Call the customer on the order instead, or ask BUYBUDDY support to step in.`
+      );
+    }
+
     const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
     for (const i of items) if (i.product_id) db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(i.qty, i.product_id);
     transition(order.id, 'cancelled', { actor: req.user, actorRole: 'merchant', note: `Rejected by store — ${reason}` });
-    if (order.payment_status === 'paid') {
-      walletEntry(order.customer_id, { type: 'credit', amount: order.total, orderId: order.id, description: `Refund — ${order.code}` });
-      db.prepare("UPDATE orders SET payment_status = 'refunded' WHERE id = ?").run(order.id);
+
+    /*
+     * The refund goes through the same path as every other refund: back to the
+     * card if Paystack actually took the money, into the wallet if it did not.
+     * Crediting the wallet for a card payment left the customer's money sitting in
+     * the Paystack balance while BUYBUDDY paid again out of its own pocket.
+     */
+    let where = 'You have not been charged.';
+    if (['paid', 'paid_cash'].includes(order.payment_status)) {
+      const result = await refundPayment(order.id, {
+        reason: `Store declined the order — ${reason}`,
+        actor: req.user,
+      });
+      where = result.to_card
+        ? `₦${result.refunded.toLocaleString()} is on its way back to your card — banks usually take 5–10 working days.`
+        : `₦${result.refunded.toLocaleString()} is back in your BUYBUDDY wallet now, ready to spend.`;
     }
-    notify(order.customer_id, { title: `Order ${order.code} declined`, body: `${reason}. You have not been charged.`, kind: 'alert', orderId: order.id });
-    res.json({ ok: true });
+
+    notify(order.customer_id, {
+      title: `Order ${order.code} declined`,
+      body: `${store.name} could not fulfil this order: ${reason}. ${where}`,
+      kind: 'alert',
+      orderId: order.id,
+    });
+    audit(req, 'order.reject', 'order', order.id, { reason });
+    res.json({ ok: true, refunded: ['refunded'].includes(db.prepare('SELECT payment_status FROM orders WHERE id = ?').get(order.id).payment_status) });
   })
 );
 

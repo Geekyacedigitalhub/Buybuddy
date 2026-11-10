@@ -1458,3 +1458,54 @@ test('42. a basket that grew asks for the difference, not the whole price again'
   const again = await api(`/api/orders/${orderId}/pay`, { method: 'POST', token: customer, body: { payment_method: 'wallet' } });
   assert.equal(again.status, 400, 'and it cannot be charged a second time');
 });
+
+test('43. a shop cannot decline an order the rider already collected', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  const rider = await login('rider@buybuddy.ng');
+  await api('/api/worker/availability', { method: 'POST', token: rider, body: { available: true } });
+
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = await api('/api/products?limit=200');
+  const item = products.body.products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: Math.max(2, Math.ceil(2000 / item.price)) } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const placed = await api('/api/orders/checkout', { method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet' } });
+  const order = placed.body.order;
+
+  await api(`/api/merchant/orders/${order.id}/accept`, { method: 'POST', token: merchant });
+  await api(`/api/merchant/orders/${order.id}/ready`, { method: 'POST', token: merchant });
+  await api(`/api/worker/jobs/${order.id}/accept`, { method: 'POST', token: rider });
+  await api(`/api/worker/jobs/${order.id}/pickup`, { method: 'POST', token: rider });
+
+  const late = await api(`/api/merchant/orders/${order.id}/reject`, { method: 'POST', token: merchant, body: { reason: 'Changed our mind' } });
+  assert.equal(late.status, 400, 'the rider is already carrying it');
+  assert.match(late.body.error, /cannot be declined/i);
+  assert.match(late.body.error, /rider has collected it/i);
+  assert.match(late.body.error, /ask BUYBUDDY support/i, 'and it says what to do instead');
+
+  const still = await api(`/api/orders/${order.id}`, { token: customer });
+  assert.notEqual(still.body.order.status, 'cancelled', 'the order was left alone');
+
+  // declining before pickup still works, and gives the money back to the wallet
+  const walletBefore = (await api('/api/wallet', { token: customer })).body.balance;
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: Math.max(2, Math.ceil(2000 / item.price)) } });
+  const second = await api('/api/orders/checkout', { method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet' } });
+  const walletAfterPay = (await api('/api/wallet', { token: customer })).body.balance;
+  const decline = await api(`/api/merchant/orders/${second.body.order.id}/reject`, {
+    method: 'POST', token: merchant, body: { reason: 'Kitchen closed early' },
+  });
+  assert.equal(decline.status, 200, JSON.stringify(decline.body));
+  const walletAfter = (await api('/api/wallet', { token: customer })).body.balance;
+  assert.equal(walletAfter, walletBefore, 'paid from the wallet, returned to the wallet');
+
+  const { db } = await import('../src/lib/db.js');
+  const customerId = (await api('/api/me', { token: customer })).body.user.id;
+  const note = db
+    .prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC')
+    .all(customerId)
+    .find((n) => /declin|refund/i.test(n.body)) || {};
+  assert.match(note.body, /wallet/i, 'and the customer is told where the money went');
+  assert.doesNotMatch(note.body, /have not been charged/i, 'no false comfort when money was taken');
+});

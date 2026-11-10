@@ -83,6 +83,9 @@ export function OrderDetail() {
   const [tab, setTab] = useState('summary');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [report, setReport] = useState({ category: 'order', message: '' });
+  const [reportSent, setReportSent] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
@@ -108,6 +111,20 @@ export function OrderDetail() {
   const currentIdx = steps.indexOf(order.status);
   const progress = currentIdx < 0 ? (order.status === 'cancelled' || order.status === 'refunded' ? 100 : 0) : ((currentIdx + 1) / steps.length) * 100;
   const pendingApprovals = (order.shopping_items || []).filter((i) => i.status === 'proposed');
+
+  const sendReport = async () => {
+    setBusy(true);
+    try {
+      await api.post('/api/support/tickets', {
+        subject: `Problem with ${order.code}`,
+        message: report.message,
+        category: report.category,
+        order_id: order.id,
+      });
+      setReportSent(true);
+      toast.success('Support has your report');
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
 
   const act = async (fn, label) => {
     setBusy(true);
@@ -160,7 +177,18 @@ export function OrderDetail() {
             </div>
           )}
         </div>
-        <StatusBadge status={order.status} />
+        <div className="col" style={{ alignItems: 'flex-end', gap: 6 }}>
+          <StatusBadge status={order.status} />
+          {!['pending_payment', 'cancelled'].includes(order.status) && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 12, padding: '4px 8px' }}
+              onClick={() => { setReportSent(false); setReport({ category: order.type === 'personal' ? 'order' : 'order', message: '' }); setReportOpen(true); }}
+            >
+              <Icon name="chat" size={13} /> Report a problem
+            </button>
+          )}
+        </div>
       </div>
 
       {/* progress + map */}
@@ -460,7 +488,50 @@ export function OrderDetail() {
         </div>
       )}
 
-      <Modal open={rateOpen} onClose={() => setRateOpen(false)} title="Rate this order"
+            <Modal open={reportOpen} onClose={() => setReportOpen(false)} title={`Problem with ${order.code}`}>
+        {reportSent ? (
+          <div className="col" style={{ gap: 12 }}>
+            <div
+              style={{
+                padding: '12px 14px', borderRadius: 12, background: 'var(--green-50)',
+                border: '1px solid var(--green-200)', fontSize: 13, lineHeight: 1.6,
+              }}
+            >
+              <strong>Support has it.</strong> They can see this order and everything on it — totals, the shopper,
+              the rider and the receipt. Reply to them from <strong>Help &amp; support</strong> and you will get an
+              answer in the app and by SMS.
+            </div>
+            <Button block onClick={() => setReportOpen(false)}>Close</Button>
+          </div>
+        ) : (
+          <div className="col" style={{ gap: 12 }}>
+            <p className="sub" style={{ margin: 0 }}>
+              Tell us what went wrong and we will look at this order with you. Nothing is charged for reporting.
+            </p>
+            <Field label="What went wrong?">
+              <select className="select" value={report.category} onChange={(e) => setReport({ ...report, category: e.target.value })}>
+                <option value="order">Wrong or missing item</option>
+                <option value="delivery">Late, damaged or undelivered</option>
+                <option value="payment">I was charged wrongly, or a refund is missing</option>
+                <option value="general">Something else</option>
+              </select>
+            </Field>
+            <Field label="In your words" hint="The more detail, the faster we can fix it.">
+              <Textarea
+                rows={5}
+                value={report.message}
+                onChange={(e) => setReport({ ...report, message: e.target.value })}
+                placeholder="For example: the rice came open and the milk was missing."
+              />
+            </Field>
+            <Button block disabled={busy || report.message.trim().length < 5} onClick={sendReport}>
+              {busy ? 'Sending…' : 'Send to support'}
+            </Button>
+          </div>
+        )}
+      </Modal>
+
+<Modal open={rateOpen} onClose={() => setRateOpen(false)} title="Rate this order"
         footer={<Button block onClick={submitRating}>Submit rating</Button>}>
         <div className="col center" style={{ gap: 12, alignItems: 'center' }}>
           <div className="row" style={{ gap: 6 }}>

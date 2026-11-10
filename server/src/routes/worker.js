@@ -268,7 +268,22 @@ router.post(
     const proposed = items.filter((i) => ['proposed', 'unavailable', 'approved'].includes(i.status));
     if (!proposed.length) throw bad('Record at least one item price before requesting approval.');
     if (order.status === 'shopping') {
-      transition(order.id, 'awaiting_approval', { actor: req.user, actorRole: 'shopper', note: 'Basket submitted for customer approval' });
+      // The customer gets one notification, and it has to say what it will cost
+      // and what to do about it — "approval needed" alone makes them open the app
+      // to find out whether anything actually changed.
+      const total = proposed.reduce(
+        (sum, i) => sum + (i.proposed_price || i.target_price || 0) * (i.proposed_qty || i.qty || 1),
+        0
+      );
+      const changed = items.filter((i) => ['proposed', 'unavailable'].includes(i.status)).length;
+      transition(order.id, 'awaiting_approval', {
+        actor: req.user,
+        actorRole: 'shopper',
+        note: `Basket submitted for customer approval — ${items.length} item${items.length === 1 ? '' : 's'}`
+          + `${total ? `, ₦${total.toLocaleString()}` : ''}`
+          + `${changed ? ` · ${changed} changed or missing` : ''}`
+          + '. Open the order to approve or reject.',
+      });
     }
     res.json({ order: publicOrder(db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id)) });
   })

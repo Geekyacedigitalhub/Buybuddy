@@ -583,7 +583,20 @@ export async function refundPayment(orderId, { amount, reason, actor, returnPoin
   event(orderId, {
     actorId: actor?.id, actorRole: 'admin', type: 'refunded',
     message: `Refund of ₦${amt.toLocaleString()} issued ${where} — ${reason || 'no reason given'}${fully ? '' : ` (₦${(remaining - amt).toLocaleString()} still owed)`}`,
-    meta: refundNote || undefined,
+    /*
+     * The customer's own view of a refund is built from this, not from the
+     * sentence in the timeline: how much, where it went, and why.
+     */
+    meta: {
+      ...(refundNote || {}),
+      refund: {
+        amount: amt,
+        reason: reason || null,
+        to_card: sentToProvider,
+        fully_refunded: fully,
+        remaining: remaining - amt,
+      },
+    },
   });
   notify(order.customer_id, {
     title: `Refund issued — ${order.code}`,

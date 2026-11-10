@@ -395,12 +395,37 @@ router.get(
       )
       .all(order.id);
     const receipts = db.prepare('SELECT * FROM receipts WHERE order_id = ? ORDER BY created_at').all(order.id);
+    /*
+     * Every refund this order has had, with the reason the office typed. It is
+     * read from the order's own events, so a refund cannot exist in the office
+     * and be invisible to the customer.
+     */
+    const refunds = db
+      .prepare("SELECT meta, message, created_at FROM order_events WHERE order_id = ? AND type = 'refunded' ORDER BY created_at DESC")
+      .all(order.id)
+      .map((row) => {
+        let meta = {};
+        try { meta = JSON.parse(row.meta || '{}'); } catch { /* older rows have no meta */ }
+        const r = meta.refund || {};
+        return {
+          amount: Number(r.amount || 0),
+          reason: r.reason || null,
+          to_card: Boolean(r.to_card),
+          remaining: Number(r.remaining || 0),
+          fully_refunded: Boolean(r.fully_refunded),
+          at: row.created_at,
+          note: row.message,
+        };
+      })
+      .filter((r) => r.amount > 0);
     const payment = db.prepare('SELECT * FROM payments WHERE order_id = ? ORDER BY created_at DESC LIMIT 1').get(order.id);
     res.json({
       order: publicOrder(order, { includePrivate: order.customer_id === req.user.id }),
       messages,
       receipts,
       payment,
+      refunds,
+      refunded_total: refunds.reduce((sum, r) => sum + r.amount, 0),
       delivery_pin: order.customer_id === req.user.id ? order.delivery_pin : undefined,
     });
   })

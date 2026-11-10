@@ -110,6 +110,10 @@ export function OrderDetail() {
 
   if (!data) return <Loading />;
   const { order, messages, receipts, payment } = data;
+  // what the office has actually paid back, and where it went
+  const refunds = data.refunds || [];
+  const refundedTotal = data.refunded_total || refunds.reduce((s2, r) => s2 + r.amount, 0);
+  const paidOnOrder = order.amount_paid || order.total;
   const steps = order.type === 'personal' ? STEPS_PERSONAL : STEPS_MERCHANT;
   const currentIdx = steps.indexOf(order.status);
   const progress = currentIdx < 0 ? (order.status === 'cancelled' || order.status === 'refunded' ? 100 : 0) : ((currentIdx + 1) / steps.length) * 100;
@@ -395,6 +399,68 @@ export function OrderDetail() {
               </div>
             );
           })()}
+
+          {(refunds.length > 0 || order.payment_status === 'refunded') && (
+            <div
+              className="tile"
+              style={{ background: 'var(--green-50)', border: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}
+            >
+              <div className="row-between">
+                <div>
+                  <div className="label" style={{ marginBottom: 2 }}>Refund</div>
+                  <div className="strong" style={{ fontSize: 15 }}>
+                    {naira(refundedTotal)} back of {naira(paidOnOrder)} paid
+                  </div>
+                </div>
+                <Badge tone={refundedTotal >= paidOnOrder ? 'badge-ok' : 'badge-warn'}>
+                  {refundedTotal >= paidOnOrder
+                    ? 'fully refunded'
+                    : order.status === 'cancelled'
+                      ? `${naira(Math.max(0, paidOnOrder - refundedTotal))} still to come`
+                      : 'partly refunded'}
+                </Badge>
+              </div>
+
+              {refunds.map((r, i) => (
+                <div key={`${r.at}-${i}`} style={{ borderTop: i ? '1px solid var(--line)' : 'none', paddingTop: i ? 8 : 0 }}>
+                  <div className="row-between">
+                    <span className="sub">
+                      {naira(r.amount)} · {r.to_card ? 'back to your card' : 'in your BUYBUDDY wallet'}
+                    </span>
+                    <span className="tiny muted">{timeAgo(r.at)}</span>
+                  </div>
+                  {r.reason && <div className="tiny muted" style={{ marginTop: 2 }}>Reason: {r.reason}</div>}
+                  {r.to_card && (
+                    <div className="tiny muted" style={{ marginTop: 2 }}>
+                      Paystack sends it back to the card that paid — banks usually take 5–10 working days.
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {refundedTotal > 0 && refundedTotal < paidOnOrder && order.status !== 'cancelled' && (
+                <div className="tiny muted">
+                  This was a part refund for the problem you reported. The rest of the order stands — nothing else is owed.
+                </div>
+              )}
+              {order.status === 'cancelled' && refundedTotal < paidOnOrder && (
+                <div className="tiny" style={{ color: 'var(--orange-deep, #B45309)', fontWeight: 600 }}>
+                  This order was cancelled. {naira(paidOnOrder - refundedTotal)} of what you paid has not come back yet —
+                  open Help &amp; support and we will finish it.
+                </div>
+              )}
+
+              {!refunds.length && order.payment_status === 'refunded' && (
+                <div className="sub">This order was refunded. The money is in your wallet.</div>
+              )}
+
+              {!refunds.some((r) => r.to_card) && refundedTotal > 0 && (
+                <Button size="sm" variant="ghost" onClick={() => nav('/account/wallet')}>
+                  <Icon name="wallet" size={14} /> See it in your wallet
+                </Button>
+              )}
+            </div>
+          )}
 
           {['paid', 'paid_cash', 'refunded'].includes(order.payment_status) && (
             <div className="row-between">

@@ -397,6 +397,24 @@ router.get(
   })
 );
 
+/*
+ * The bell in the topbar asks this every 20 seconds, so keep it tiny: a count
+ * and the newest one. The full list is a separate call the sheet makes on open.
+ */
+router.get(
+  '/notifications/summary',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const unread = db
+      .prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0')
+      .get(req.user.id).n;
+    const newest = db
+      .prepare('SELECT id, title, body, kind, order_id, read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1')
+      .get(req.user.id);
+    res.json({ unread, newest: newest ? { ...newest, read: Boolean(newest.read) } : null });
+  })
+);
+
 router.post(
   '/notifications/read',
   requireAuth,

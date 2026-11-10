@@ -1998,3 +1998,91 @@ test('50. a customer can download a real PDF receipt for their own order, and no
   const anon = await fetch(`${base}/api/orders/${order.id}/receipt.pdf`);
   assert.equal(anon.status, 401, 'and a logged-out visitor gets nothing');
 });
+
+test('51. a refund the office issued is on the order the customer opens, with the reason', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = (await api('/api/products?limit=200')).body.products;
+  const item = products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3 && p.price >= 1200);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 2 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const order = (await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet' },
+  })).body.order;
+  assert.ok(order?.id, 'the order exists');
+
+  const walletBefore = (await api('/api/wallet', { token: customer })).body.balance;
+
+  const refund = await api(`/api/admin/orders/${order.id}/refund`, {
+    method: 'POST', token: admin, body: { amount: 1000, reason: 'Item was missing' },
+  });
+  assert.equal(refund.status, 200, JSON.stringify(refund.body).slice(0, 200));
+  assert.equal(refund.body.refunded, 1000);
+
+  const detail = (await api(`/api/orders/${order.id}`, { token: customer })).body;
+  assert.equal(detail.refunded_total, 1000, 'the order says how much came back');
+  assert.equal(Array.isArray(detail.refunds), true);
+  const r = detail.refunds[0];
+  assert.equal(r.amount, 1000);
+  assert.equal(r.reason, 'Item was missing', 'the reason the office typed reaches the customer');
+  assert.equal(r.to_card, false, 'a wallet refund says it went to the wallet');
+  assert.ok(r.at, 'with a date');
+  assert.ok(r.remaining > 0, 'and what is still owed on a part-refund');
+
+  // the money is really there, not just described
+  const walletAfter = (await api('/api/wallet', { token: customer })).body;
+  assert.equal(walletAfter.balance, walletBefore + 1000);
+  assert.ok(walletAfter.entries.some((e) => /refund/i.test(e.description) && e.amount === 1000));
+
+  // a second, full refund closes it out rather than double-counting
+  const rest = await api(`/api/admin/orders/${order.id}/refund`, {
+    method: 'POST', token: admin, body: { amount: detail.order.total - 1000, reason: 'Goodwill gesture' },
+  });
+  assert.equal(rest.status, 200, JSON.stringify(rest.body).slice(0, 200));
+  const after = (await api(`/api/orders/${order.id}`, { token: customer })).body;
+  assert.equal(after.refunded_total, detail.order.total);
+  assert.equal(after.refunds.length, 2);
+  assert.equal(after.order.payment_status, 'refunded');
+});
+
+test('52. the bell counts what has not been read, and only stops counting when it is read', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+
+  // start from a clean slate for this customer
+  await api('/api/notifications/read', { method: 'POST', token: customer, body: {} });
+  const clean = (await api('/api/notifications/summary', { token: customer })).body;
+  assert.equal(clean.unread, 0);
+  assert.ok(!clean.newest || clean.newest.read, 'nothing is left unread');
+
+  const sent = await api('/api/admin/notifications/broadcast', {
+    method: 'POST', token: admin, body: { title: 'New on BUYBUDDY', body: 'Fresh produce is 10% off today.', role: 'customer' },
+  });
+  assert.equal(sent.status, 200);
+
+  const bell = (await api('/api/notifications/summary', { token: customer })).body;
+  assert.ok(bell.unread >= 1, 'the bell has something to say');
+  assert.equal(bell.newest.title, 'New on BUYBUDDY');
+  assert.equal(bell.newest.read, false);
+  assert.ok(bell.newest.id);
+
+  // reading the whole list must not silently mark it read
+  const list = (await api('/api/notifications', { token: customer })).body;
+  assert.ok(list.notifications.length >= 1);
+  assert.equal((await api('/api/notifications/summary', { token: customer })).body.unread, bell.unread);
+
+  // opening one item marks that one
+  await api('/api/notifications/read', { method: 'POST', token: customer, body: { id: bell.newest.id } });
+  const afterOne = (await api('/api/notifications/summary', { token: customer })).body;
+  assert.equal(afterOne.unread, bell.unread - 1);
+
+  await api('/api/notifications/read', { method: 'POST', token: customer, body: {} });
+  assert.equal((await api('/api/notifications/summary', { token: customer })).body.unread, 0);
+
+  // and it is private: another customer's bell is their own
+  const other = await login('rider@buybuddy.ng');
+  const theirs = (await api('/api/notifications', { token: other })).body;
+  assert.equal(theirs.notifications.every((n) => n.title !== 'New on BUYBUDDY' || n.user_id === undefined), true);
+});

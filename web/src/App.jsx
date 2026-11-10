@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, CartProvider, Logo, Icon, useAuth, useCart, Loading, ToastProvider } from './lib/ui.jsx';
 import { naira, hasApiBase, isNativeApp } from './lib/api.js';
+import { NotificationsBell } from './lib/bell.jsx';
 import ServerSetup from './screens/ServerSetup.jsx';
 
 import AuthScreen from './screens/Auth.jsx';
@@ -64,6 +65,7 @@ function CustomerShell({ children }) {
               ? <span className="sub hide-sm">Hi, {user.name.split(' ')[0]}</span>
               : <button className="btn btn-ghost btn-sm" onClick={() => nav('/login')}>Sign in</button>}
           </div>
+          {user && <NotificationsBell role="customer" />}
           <button className="btn btn-ghost btn-icon" onClick={() => nav('/favourites')} aria-label="Favourites">
             <Icon name="heart" size={18} />
           </button>
@@ -184,6 +186,7 @@ function WorkerShell({ children }) {
           </span>
           <div className="spacer" />
           <span className="sub hide-sm">{user.name}</span>
+          <NotificationsBell role="worker" />
           <button className="btn btn-ghost btn-icon" onClick={logout} aria-label="Log out"><Icon name="logout" size={18} /></button>
         </div>
       </div>

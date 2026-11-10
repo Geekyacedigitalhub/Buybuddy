@@ -432,24 +432,68 @@ export function Addresses() {
 
 export function Notifications() {
   const [data, setData] = useState(null);
-  useEffect(() => {
-    api.get('/api/notifications').then(setData).catch(() => setData({ notifications: [] }));
-    api.post('/api/notifications/read', {}).catch(() => {});
-  }, []);
+  const nav = useNavigate();
+  const toast = useToast();
+
+  /*
+   * Opening this screen used to mark everything read before the customer had
+   * read a word of it, so the badge cleared and the unread mark was a lie. Now a
+   * row is marked read when it is opened, and "Mark all as read" is a decision
+   * the customer makes.
+   */
+  const load = () => api.get('/api/notifications').then(setData).catch(() => setData({ notifications: [] }));
+  useEffect(() => { load(); }, []);
+
+  const openOne = async (n) => {
+    try {
+      if (!n.read) {
+        await api.post('/api/notifications/read', { id: n.id });
+        setData((d) => ({ ...d, notifications: d.notifications.map((x) => (x.id === n.id ? { ...x, read: true } : x)) }));
+      }
+      if (n.order_id) nav(`/orders/${n.order_id}`);
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const markAll = async () => {
+    try {
+      await api.post('/api/notifications/read', {});
+      setData((d) => ({ ...d, notifications: d.notifications.map((x) => ({ ...x, read: true })) }));
+      toast.success('All marked as read');
+    } catch (e) { toast.error(e.message); }
+  };
+
   if (!data) return <Loading />;
+  const unread = data.notifications.filter((n) => !n.read).length;
   return (
     <div className="page page-tight col">
-      <SectionHead title="Notifications" />
+      <SectionHead
+        title="Notifications"
+        subtitle={unread ? `${unread} you have not opened` : 'Nothing waiting'}
+        action={unread ? <Button size="sm" variant="ghost" onClick={markAll}>Mark all as read</Button> : null}
+      />
       {data.notifications.length === 0 && <Empty icon="bell" title="All caught up" body="Order updates will show up here." />}
       <div className="col" style={{ gap: 8 }}>
         {data.notifications.map((n) => (
-          <div key={n.id} className="card" style={{ borderLeft: `3px solid ${n.read ? 'var(--line)' : 'var(--green-600)'}` }}>
-            <div className="row-between">
+          <button
+            key={n.id}
+            className="card"
+            onClick={() => openOne(n)}
+            style={{
+              textAlign: 'left', cursor: n.order_id ? 'pointer' : 'default', border: 'none', width: '100%',
+              borderLeft: `3px solid ${n.read ? 'var(--line)' : n.kind === 'action' ? 'var(--orange)' : 'var(--green-600)'}`,
+            }}
+          >
+            <div className="row-between" style={{ gap: 8 }}>
               <span className="strong" style={{ fontSize: 13.5 }}>{n.title}</span>
               <span className="tiny muted">{timeAgo(n.created_at)}</span>
             </div>
             <div className="sub" style={{ marginTop: 3 }}>{n.body}</div>
-          </div>
+            {n.order_id && (
+              <div className="tiny" style={{ marginTop: 6, color: 'var(--green-700)', fontWeight: 700 }}>
+                Open the order <Icon name="right" size={11} style={{ verticalAlign: -1 }} />
+              </div>
+            )}
+          </button>
         ))}
       </div>
     </div>

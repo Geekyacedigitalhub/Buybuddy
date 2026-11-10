@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { askText } from '../lib/ask.jsx';
 import { api, naira, nairaShort, pretty, timeAgo, assetUrl, downloadFile } from '../lib/api.js';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, StatusBadge,
@@ -291,18 +292,29 @@ function Orders() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => {
-                  const paid = detail.payments.filter((p) => ['success', 'refunded'].includes(p.status));
-                  const already = paid.reduce((s, p) => s + (p.refunded_amount || 0), 0);
-                  const left = Math.max(0, (paid.reduce((s, p) => s + p.amount, 0) || detail.order.total) - already);
-                  const reason = prompt(
-                    `Refund how much of ${detail.order.code}? ₦${left.toLocaleString()} is still owed to the customer.`,
-                    String(left),
-                  );
-                  if (reason === null) return;
-                  const why = prompt('Reason (the customer sees this on the order):', 'Admin resolution');
+                onClick={async () => {
+                  const paidRows = detail.payments.filter((p) => ['success', 'refunded'].includes(p.status));
+                  const already = paidRows.reduce((s, p) => s + (p.refunded_amount || 0), 0);
+                  const left = Math.max(0, (paidRows.reduce((s, p) => s + p.amount, 0) || detail.order.total) - already);
+                  const amount = await askText({
+                    title: `Refund ${detail.order.code}`,
+                    message: `₦${left.toLocaleString()} is still owed to the customer. Change the amount if only part of the order is affected.`,
+                    label: 'How much to refund (₦)',
+                    defaultValue: String(left),
+                    inputType: 'number',
+                    multiline: false,
+                    confirmLabel: 'Next: say why',
+                  });
+                  if (amount === null) return;
+                  const why = await askText({
+                    title: 'Why is this being refunded?',
+                    message: 'The customer reads this on the order, so keep it plain.',
+                    presets: ['Item was missing', 'Item arrived damaged', 'Order was very late', 'Goodwill gesture', 'Rider and customer agreed'],
+                    confirmLabel: `Refund ₦${Number(amount || left).toLocaleString()}`,
+                    danger: true,
+                  });
                   if (why === null) return;
-                  act(`/api/admin/orders/${detail.order.id}/refund`, { amount: Number(reason) || left, reason: why }, 'Refund issued');
+                  act(`/api/admin/orders/${detail.order.id}/refund`, { amount: Number(amount) || left, reason: why }, 'Refund issued');
                 }}
               >
                 Refund {naira(Math.max(0, (detail.payments.filter((p) => ['success', 'refunded'].includes(p.status)).reduce((s, p) => s + p.amount, 0) || detail.order.total) - detail.payments.reduce((s, p) => s + (p.refunded_amount || 0), 0)))}
@@ -349,8 +361,17 @@ function People() {
   };
 
   const setStatus = async (user, status) => {
-    const reason = status === 'active' ? 'Reactivated by admin' : prompt(`Reason for ${status}?`, 'Policy violation');
-    if (status !== 'active' && reason === null) return;
+    let reason = 'Reactivated by admin';
+    if (status !== 'active') {
+      reason = await askText({
+        title: `${status === 'suspended' ? 'Suspend' : 'Block'} ${user.name}?`,
+        message: 'They are signed out and cannot order or earn until you lift this. They are not told your internal notes, only that the account is on hold and to contact support.',
+        presets: ['Policy violation', 'Fraudulent activity', 'Repeated late deliveries', 'Abusive to a customer or shop'],
+        confirmLabel: `Yes, ${status === 'suspended' ? 'suspend' : 'block'} the account`,
+        danger: true,
+      });
+      if (reason === null) return;
+    }
     try {
       await api.post(`/api/admin/users/${user.id}/status`, { status, reason });
       toast.success(`${user.name} ${status}`);
@@ -446,10 +467,17 @@ function Listings() {
   useEffect(() => { load(); }, [filters]);
 
   const moderate = async (product, status) => {
-    const reason = status === 'inactive'
-      ? prompt(`Why is "${product.name}" coming down? The store owner sees this.`, 'Photo or description does not match the product')
-      : undefined;
-    if (status === 'inactive' && reason === null) return;
+    let reason;
+    if (status === 'inactive') {
+      reason = await askText({
+        title: `Take down “${product.name}”`,
+        message: 'The listing disappears from the marketplace straight away. The shop keeps its other products and sees your reason, so tell them what to fix.',
+        presets: ['Photo or description does not match the product', 'Price looks wrong', 'Product is not allowed', 'Reported by a customer'],
+        confirmLabel: 'Take the listing down',
+        danger: true,
+      });
+      if (reason === null) return;
+    }
     try {
       await api.patch(`/api/admin/products/${product.id}`, { status, reason });
       toast.success(status === 'active' ? 'Listing is back on the marketplace' : 'Listing hidden');
@@ -511,8 +539,17 @@ function Merchants() {
   useEffect(() => { load(); }, []);
 
   const decide = async (store, decision) => {
-    const reason = decision === 'approve' ? undefined : prompt(`Reason for ${decision}?`, 'Incomplete documents');
-    if (decision !== 'approve' && reason === null) return;
+    let reason;
+    if (decision !== 'approve') {
+      reason = await askText({
+        title: `${decision === 'reject' ? 'Reject' : 'Suspend'} ${store.name}?`,
+        message: 'The shop owner reads this, and it is the only thing they have to work with — name the document or detail that needs fixing.',
+        presets: ['Incomplete documents', 'CAC number does not match the business name', 'Store address cannot be verified', 'Photo of the shop is unclear'],
+        confirmLabel: `Yes, ${decision}`,
+        danger: true,
+      });
+      if (reason === null) return;
+    }
     try {
       await api.post(`/api/admin/merchants/${store.id}/decision`, { decision, reason });
       toast.success(`Store ${decision}d`);
@@ -582,8 +619,17 @@ function Workers() {
   useEffect(() => { load(); }, []);
 
   const decide = async (w, decision) => {
-    const reason = decision === 'approve' ? undefined : prompt(`Reason for ${decision}?`, 'Documents unclear');
-    if (decision !== 'approve' && reason === null) return;
+    let reason;
+    if (decision !== 'approve') {
+      reason = await askText({
+        title: `${decision === 'reject' ? 'Reject' : 'Suspend'} ${w.name}?`,
+        message: 'They read this in the app and it is what they will fix before applying again.',
+        presets: ['ID photo is unclear', 'Guarantor details missing', 'Bank name does not match the account number', 'Could not reach them on the phone'],
+        confirmLabel: `Yes, ${decision}`,
+        danger: true,
+      });
+      if (reason === null) return;
+    }
     try {
       await api.post(`/api/admin/workers/${w.id}/decision`, { decision, reason });
       toast.success(`Worker ${decision}d`);

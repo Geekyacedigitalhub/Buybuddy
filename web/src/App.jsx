@@ -1,3 +1,4 @@
+import { AskHost } from './lib/ask.jsx';
 import React, { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, CartProvider, Logo, Icon, useAuth, useCart, Loading, ToastProvider } from './lib/ui.jsx';
@@ -156,6 +157,7 @@ export default function App() {
 
   return (
     <ToastProvider>
+      <AskHost />
       <AuthProvider>
         <CartProvider>
           {needsServer ? <ServerSetup /> : (

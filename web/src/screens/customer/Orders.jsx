@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { askConfirm } from '../../lib/ask.jsx';
 import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress, assetUrl } from '../../lib/api.js';
 /* Leaflet is ~45 kB of map code that only one screen needs, so it loads on
    demand: the rest of the app stays light and the map still appears instantly. */
@@ -135,8 +136,18 @@ export function OrderDetail() {
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
-  const cancel = () => {
-    if (!confirm('Cancel this order? Any captured payment will be refunded to your wallet.')) return;
+  const cancel = async () => {
+    const yes = await askConfirm({
+      title: `Cancel ${order.code}?`,
+      message: order.payment_status === 'paid'
+        ? `Anything you paid goes back where it came from — ${order.payment_method === 'cash' ? 'a cash order needs no refund' : 'to your wallet, or to your card for a card payment'}.`
+        : 'This order has not been paid, so there is nothing to refund.',
+      detail: 'The store and any rider on the way are told straight away. You can order the same items again at any time.',
+      confirmLabel: 'Cancel this order',
+      cancelLabel: 'Keep my order',
+      danger: true,
+    });
+    if (!yes) return;
     act(() => api.post(`/api/orders/${order.id}/cancel`, { reason: 'Changed my mind' }), 'Order cancelled');
   };
 

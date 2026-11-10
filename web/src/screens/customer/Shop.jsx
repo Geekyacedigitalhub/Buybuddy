@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { askConfirm } from '../../lib/ask.jsx';
 import { api, naira, shortDate, assetUrl } from '../../lib/api.js';
 import { InstallBanner } from '../../components/InstallApp.jsx';
 import {
@@ -223,7 +224,14 @@ export function ProductCard({ product, compact }) {
       toast.success(`${product.name} added to cart`);
     } catch (err) {
       if (err.payload?.code === 'store_conflict') {
-        if (confirm(`${err.message}\n\nStart a new cart with this item?`)) {
+        const fresh = await askConfirm({
+          title: 'Start a new cart?',
+          message: err.message,
+          detail: 'A cart belongs to one store so the rider collects everything in one trip. Starting again empties the cart you already have.',
+          confirmLabel: 'Empty my cart and add this',
+          cancelLabel: 'Keep my cart',
+        });
+        if (fresh) {
           await api.del('/api/cart');
           await api.post('/api/cart', { product_id: product.id, qty: 1 });
           await reload();
@@ -522,7 +530,14 @@ export function ProductPage() {
       toast.success('Added to cart');
     } catch (err) {
       if (err.payload?.code === 'store_conflict') {
-        if (confirm(`${err.message}\n\nStart a new cart with this item?`)) {
+        const fresh = await askConfirm({
+          title: 'Start a new cart?',
+          message: err.message,
+          detail: 'A cart belongs to one store so the rider collects everything in one trip. Starting again empties the cart you already have.',
+          confirmLabel: 'Empty my cart and add this',
+          cancelLabel: 'Keep my cart',
+        });
+        if (fresh) {
           await api.del('/api/cart');
           await api.post('/api/cart', { product_id: product.id, qty });
           await reload();

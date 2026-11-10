@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { askConfirm } from '../../lib/ask.jsx';
 import { api, naira, toDataUrl, assetUrl } from '../../lib/api.js';
 import {
   Badge, Button, Field, Icon, Input, Loading, Modal, Select, Textarea, useToast,
@@ -83,7 +84,13 @@ export default function ShopForMe() {
     if (!form.address_id) return toast.error('Choose a delivery address.');
     if (!budget || budget < 1000) return toast.error('Set a budget of at least ₦1,000.');
     if (clean.some((i) => !i.target_price)) {
-      if (!confirm('Some items have no expected price. Your shopper will propose prices for your approval. Continue?')) return;
+      const go = await askConfirm({
+        title: 'Some prices are missing',
+        message: 'Your shopper will find the item and propose a price, and nothing is bought until you approve it.',
+        detail: 'You are only charged the delivery and shopping fee to start. If the real basket costs more than your budget, the app asks you again before anything is bought.',
+        confirmLabel: 'Continue to shopping list',
+      });
+      if (!go) return;
     }
     setBusy(true);
     try {

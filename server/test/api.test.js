@@ -1571,3 +1571,104 @@ test('44. cash a rider collects is tracked, refundable and has to be handed over
   assert.equal(again.status, 400, 'and it cannot be cleared twice');
   assert.match(again.body.error, /already/i);
 });
+
+test('45. a merchant is paid from the ledger and can only withdraw money once', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const merchant = await login('merchant1@buybuddy.ng');
+  const rider = await login('rider@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+  await api('/api/worker/availability', { method: 'POST', token: rider, body: { available: true } });
+
+  // one real card order, taken all the way to the door
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = (await api('/api/products?limit=200')).body.products;
+  const item = products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3 && p.price >= 2000);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 1 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'paystack' },
+  });
+  assert.equal(placed.status, 201, JSON.stringify(placed.body));
+  const order = placed.body.order;
+  if (order.status === 'pending_payment') {
+    await api(`/api/orders/${order.id}/pay`, { method: 'POST', token: customer });
+  }
+  await api(`/api/merchant/orders/${order.id}/accept`, { method: 'POST', token: merchant });
+  await api(`/api/merchant/orders/${order.id}/ready`, { method: 'POST', token: merchant });
+  // assign through the admin route so the test does not depend on which rider the
+  // offer engine picked in an earlier test
+  const riderId = (await api('/api/me', { token: rider })).body.user.id;
+  const assigned = await api(`/api/admin/orders/${order.id}/assign`, {
+    method: 'POST', token: admin, body: { worker_id: riderId, role: 'rider' },
+  });
+  assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
+  await api(`/api/worker/jobs/${order.id}/pickup`, { method: 'POST', token: rider });
+  await api(`/api/worker/jobs/${order.id}/in-transit`, { method: 'POST', token: rider });
+  const pin = (await api(`/api/orders/${order.id}`, { token: customer })).body.order.delivery_pin;
+  const delivered = await api(`/api/worker/jobs/${order.id}/deliver`, { method: 'POST', token: rider, body: { pin } });
+  assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
+  // the customer confirms the door-drop; that is the moment the money settles
+  const confirmed = await api(`/api/orders/${order.id}/confirm-delivery`, { method: 'POST', token: customer });
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+  assert.equal(confirmed.body.order.status, 'completed');
+
+  const ledger = await api('/api/merchant/settlements', { token: merchant });
+  assert.equal(ledger.status, 200, JSON.stringify(ledger.body));
+  const row = ledger.body.ledger.find((e) => e.order_code === order.code);
+  assert.ok(row, 'the ledger shows the order that was just settled');
+  assert.equal(row.type, 'credit');
+  assert.equal(row.gross, order.subtotal, 'gross is the order subtotal');
+  assert.equal(row.commission, row.gross - row.amount, 'commission is what was kept');
+  assert.ok(row.amount > 0 && row.amount < row.gross, 'the merchant is paid less the commission');
+  assert.equal(ledger.body.totals.net >= row.amount, true);
+  const balanceBefore = ledger.body.balance;
+
+  // no bank account, no payout — and the message says where to add it
+  await api('/api/merchant/bank', {
+    method: 'PATCH', token: merchant, body: { bank_name: '', account_name: '', account_number: '' },
+  });
+  const noBank = await api('/api/merchant/payouts', { method: 'POST', token: merchant, body: { amount: 1000 } });
+  assert.equal(noBank.status, 400, JSON.stringify(noBank.body));
+  assert.match(noBank.body.error, /bank account/i, 'it says what is missing');
+
+  const badAccount = await api('/api/merchant/bank', {
+    method: 'PATCH', token: merchant, body: { bank_name: 'GTBank', account_name: 'GreenMart Ltd', account_number: '123' },
+  });
+  assert.equal(badAccount.status, 400, 'a short account number is refused');
+  assert.match(badAccount.body.error, /10-digit/);
+
+  const saved = await api('/api/merchant/bank', {
+    method: 'PATCH', token: merchant, body: { bank_name: 'GTBank', account_name: 'GreenMart Ltd', account_number: '0123456789' },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+
+  const tooSmall = await api('/api/merchant/payouts', { method: 'POST', token: merchant, body: { amount: 500 } });
+  assert.equal(tooSmall.status, 400);
+  assert.match(tooSmall.body.error, /₦1,000/);
+
+  const first = await api('/api/merchant/payouts', { method: 'POST', token: merchant, body: { amount: 1000 } });
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  assert.equal(first.body.payout.amount, 1000);
+
+  // the money has left the wallet, so a second request cannot spend it again
+  const after = await api('/api/merchant/settlements', { token: merchant });
+  assert.equal(after.body.balance, balanceBefore - 1000, 'the wallet is debited when the request is filed');
+  const second = await api('/api/merchant/payouts', { method: 'POST', token: merchant, body: { amount: 1000 } });
+  assert.equal(second.status, 400);
+  assert.match(second.body.error, /already have/i);
+
+  // the office sees it, with the merchant's bank details, and a rejection gives the money back
+  const finance = await api('/api/admin/finance', { token: admin });
+  const seen = finance.body.payouts.find((p) => p.id === first.body.payout.id);
+  assert.ok(seen, 'the withdrawal shows in the admin finance list');
+  assert.equal(seen.role, 'merchant');
+  assert.equal(seen.bank_name, 'GTBank', 'a merchant payout carries its bank details, not a blank row');
+  assert.equal(seen.account_number, '0123456789');
+
+  const rejected = await api(`/api/admin/payouts/${first.body.payout.id}/decision`, {
+    method: 'POST', token: admin, body: { decision: 'reject', reason: 'Account name mismatch' },
+  });
+  assert.equal(rejected.status, 200, JSON.stringify(rejected.body));
+  const back = await api('/api/merchant/settlements', { token: merchant });
+  assert.equal(back.body.balance, balanceBefore, 'a rejected withdrawal returns the money');
+});

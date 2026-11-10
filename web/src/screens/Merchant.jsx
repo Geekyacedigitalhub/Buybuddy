@@ -557,45 +557,165 @@ function Products({ me }) {
 
 function Settlements() {
   const [data, setData] = useState(null);
-  useEffect(() => { api.get('/api/merchant/settlements').then(setData).catch(() => setData(null)); }, []);
-  if (!data) return <Loading block />;
+  const [amount, setAmount] = useState('');
+  const [bank, setBank] = useState(null);
+  const [savingBank, setSavingBank] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+
+  const load = () => api.get('/api/merchant/settlements').then((d) => { setData(d); setBank(d.bank || {}); }).catch(() => setData(false));
+  useEffect(() => { load(); }, []);
+
+  if (data === null) return <Loading block />;
+  if (data === false) return <Empty title="Could not load your settlements" body="Pull down to try again." />;
+
+  const request = async () => {
+    setBusy(true);
+    try {
+      await api.post('/api/merchant/payouts', { amount: Number(amount) });
+      toast.success('Withdrawal requested — we will pay it into your bank account');
+      setAmount('');
+      load();
+    } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  };
+
+  const saveBank = async () => {
+    setSavingBank(true);
+    try {
+      await api.patch('/api/merchant/bank', bank);
+      toast.success('Bank details saved');
+      load();
+    } catch (e) { toast.error(e.message); } finally { setSavingBank(false); }
+  };
+
+  const t = data.totals;
+  const canWithdraw = data.balance >= 1000 && Boolean(data.bank) && !data.open_payout;
+
   return (
-    <Shell nav={NAV} title="Settlements" subtitle="What BUYBUDDY owes you, order by order">
+    <Shell nav={NAV} title="Settlements" subtitle="Every naira that moved, straight from your ledger">
       <div className="grid grid-3" style={{ marginBottom: 16 }}>
-        <Kpi label="Wallet balance" value={naira(data.balance)} hint="Available for payout" />
-        <Kpi label="Orders settled" value={data.settlements.length} />
-        <Kpi label="Gross settled" value={naira(data.settlements.reduce((s, x) => s + x.gross, 0))} />
+        <Kpi label="Available to withdraw" value={naira(data.balance)} hint={data.open_payout ? `${naira(data.open_payout.amount)} already requested` : 'Cleared and yours'} />
+        <Kpi label="Net from orders" value={naira(t.net)} hint={`${t.orders} settled orders`} />
+        <Kpi label="Commission paid" value={naira(t.commission)} hint={`On ${naira(t.gross)} of sales`} />
       </div>
-      <div className="card card-flush table-wrap" style={{ marginBottom: 16 }}>
-        <table className="table">
-          <thead><tr><th>Order</th><th>Date</th><th>Gross</th><th>Commission</th><th>Net</th></tr></thead>
-          <tbody>
-            {data.settlements.map((s) => (
-              <tr key={s.code}>
-                <td className="mono strong">{s.code}</td>
-                <td className="sub">{timeAgo(s.date)}</td>
-                <td className="mono">{naira(s.gross)}</td>
-                <td className="mono sub">− {naira(s.commission)}</td>
-                <td className="mono strong">{naira(s.net)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="card card-flush">
-        <div style={{ padding: 14 }} className="h3">Wallet activity</div>
-        {data.entries.map((e) => (
-          <div key={e.id} className="row" style={{ gap: 10, padding: '12px 14px', borderTop: '1px solid var(--line)' }}>
-            <div className="grow">
-              <div className="strong" style={{ fontSize: 13 }}>{e.description}</div>
-              <div className="tiny muted">{timeAgo(e.created_at)}</div>
-            </div>
-            <span className="mono strong" style={{ color: e.type === 'credit' ? 'var(--ok)' : 'var(--danger)' }}>
-              {e.type === 'credit' ? '+' : '−'}{naira(e.amount)}
-            </span>
+
+      <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start', marginBottom: 16 }}>
+        <div className="card col" style={{ gap: 12 }}>
+          <div className="row-between">
+            <span className="h3">Withdraw to your bank</span>
+            <Badge tone={data.bank ? 'badge-ok' : 'badge-warn'}>{data.bank ? 'Bank on file' : 'No bank yet'}</Badge>
           </div>
-        ))}
+          {data.open_payout ? (
+            <div className="card" style={{ background: 'var(--green-50)', boxShadow: 'none' }}>
+              <div className="strong">Withdrawal of {naira(data.open_payout.amount)} is {data.open_payout.status}</div>
+              <div className="sub" style={{ marginTop: 4 }}>
+                Requested {timeAgo(data.open_payout.requested_at)}. It goes to {data.bank?.bank_name} ••••{String(data.bank?.account_number || '').slice(-4)} once approved. You can request the next one after this is paid.
+              </div>
+            </div>
+          ) : (
+            <>
+              <Field label={`Amount (₦) — up to ${naira(data.balance)}`}>
+                <Input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="20000"
+                  disabled={data.balance < 1000}
+                />
+              </Field>
+              <div className="row" style={{ gap: 8 }}>
+                <Button variant="ghost" size="sm" onClick={() => setAmount(String(data.balance))} disabled={data.balance < 1000}>All {naira(data.balance)}</Button>
+                <Button variant="ghost" size="sm" onClick={() => setAmount('10000')} disabled={data.balance < 10000}>₦10,000</Button>
+              </div>
+              <Button onClick={request} disabled={busy || !canWithdraw}>
+                {busy ? 'Sending…' : 'Request withdrawal'}
+              </Button>
+              {!data.bank && <div className="tiny" style={{ color: 'var(--warn)' }}>Add your bank account on the right first — we cannot pay you without it.</div>}
+              {data.bank && data.balance < 1000 && <div className="tiny muted">You need at least ₦1,000 settled before a withdrawal. Complete an order and it appears here.</div>}
+            </>
+          )}
+        </div>
+
+        <div className="card col" style={{ gap: 10 }}>
+          <span className="h3">Bank account</span>
+          <Field label="Bank name"><Input value={bank?.bank_name || ''} onChange={(e) => setBank({ ...bank, bank_name: e.target.value })} placeholder="GTBank" /></Field>
+          <Field label="Account number"><Input value={bank?.account_number || ''} onChange={(e) => setBank({ ...bank, account_number: e.target.value })} placeholder="0123456789" inputMode="numeric" /></Field>
+          <Field label="Account name"><Input value={bank?.account_name || ''} onChange={(e) => setBank({ ...bank, account_name: e.target.value })} placeholder="As printed on your statement" /></Field>
+          <Button variant="ghost" onClick={saveBank} disabled={savingBank}>{savingBank ? 'Saving…' : 'Save bank details'}</Button>
+        </div>
       </div>
+
+      <SectionHead title="Ledger" subtitle={data.ledger.length ? `${data.ledger.length} entries, newest first` : undefined} />
+
+      {data.ledger.length === 0 ? (
+        <Empty icon="wallet" title="Nothing has settled yet" body="When an order is delivered and completed, your share lands here with the order code beside it." />
+      ) : (
+        <>
+          {/* Seven money columns do not fit a phone: cards on phones, table on desks. */}
+          <div className="col narrow-only" style={{ gap: 10 }}>
+            {data.ledger.map((e) => (
+              <div key={e.id} className="tile">
+                <div className="row-between">
+                  <span className="strong" style={{ fontSize: 13 }}>{e.order_code || e.description}</span>
+                  <span className="mono strong" style={{ color: e.type === 'credit' ? 'var(--ok)' : 'var(--danger)' }}>
+                    {e.type === 'credit' ? '+' : '−'}{naira(e.amount)}
+                  </span>
+                </div>
+                <div className="tiny muted" style={{ marginTop: 2 }}>{e.description} · {timeAgo(e.created_at)}</div>
+                <div className="row-between tiny muted" style={{ marginTop: 6 }}>
+                  <span>Balance after: <span className="mono">{naira(e.balance_after)}</span></span>
+                  {e.gross != null && <span>Gross {naira(e.gross)} · fee {naira(e.commission)}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card card-flush table-wrap wide-only">
+            <table className="table">
+              <thead><tr><th>Date</th><th>What</th><th>Order</th><th>Gross</th><th>Commission</th><th>Net</th><th>Balance</th></tr></thead>
+              <tbody>
+                {data.ledger.map((e) => (
+                  <tr key={e.id}>
+                    <td className="sub">{timeAgo(e.created_at)}</td>
+                    <td className="strong" style={{ fontSize: 13 }}>
+                      {e.description}
+                      <div className="tiny muted">{e.type === 'credit' ? 'Money in' : 'Money out'}</div>
+                    </td>
+                    <td className="mono">{e.order_code || '—'}</td>
+                    <td className="mono sub">{e.gross != null ? naira(e.gross) : '—'}</td>
+                    <td className="mono sub">{e.commission != null ? `− ${naira(e.commission)}` : '—'}</td>
+                    <td className="mono strong" style={{ color: e.type === 'credit' ? 'var(--ok)' : 'var(--danger)' }}>
+                      {e.type === 'credit' ? '+' : '−'} {naira(e.amount)}
+                    </td>
+                    <td className="mono sub">{naira(e.balance_after)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {data.payouts.length > 0 && (
+        <>
+          <SectionHead title="Withdrawals" />
+          <div className="card card-flush table-wrap">
+            <table className="table">
+              <thead><tr><th>Requested</th><th>Amount</th><th>Status</th><th>Paid</th></tr></thead>
+              <tbody>
+                {data.payouts.map((p) => (
+                  <tr key={p.id}>
+                    <td className="sub">{timeAgo(p.requested_at)}</td>
+                    <td className="mono strong">{naira(p.amount)}</td>
+                    <td><Badge tone={p.status === 'paid' ? 'badge-ok' : p.status === 'rejected' ? 'badge-danger' : 'badge-warn'}>{p.status}</Badge></td>
+                    <td className="sub">{p.processed_at ? timeAgo(p.processed_at) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </Shell>
   );
 }

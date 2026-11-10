@@ -331,29 +331,145 @@ router.get(
   })
 );
 
+/*
+ * SETTLEMENTS — the merchant's money, read from the ledger itself.
+ *
+ * The old screen rebuilt a settlement table from orders, which drifted from the
+ * wallet: it showed money for orders that were never settled, and never showed a
+ * withdrawal. wallet_entries is the record of what actually moved, so the screen
+ * now reads it directly and joins each settlement back to its order for the
+ * gross and the commission that BUYBUDDY kept.
+ */
 router.get(
   '/merchant/settlements',
   requireAuth,
   merchantOnly,
   asyncHandler(async (req, res) => {
-    const store = requireStore(req.user.id);
+    requireStore(req.user.id);
     const entries = db
-      .prepare('SELECT * FROM wallet_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 200')
+      .prepare('SELECT * FROM wallet_entries WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 200')
       .all(req.user.id);
-    const orders = db
-      .prepare("SELECT * FROM orders WHERE store_id = ? AND status IN ('completed','delivered') ORDER BY created_at DESC LIMIT 100")
-      .all(store.id);
-    res.json({
-      balance: walletBalance(req.user.id),
-      entries,
-      settlements: orders.map((o) => ({
-        code: o.code,
-        date: o.created_at,
-        gross: o.approved_subtotal || o.subtotal,
-        commission: Math.round((o.approved_subtotal || o.subtotal) * store.commission_rate),
-        net: (o.approved_subtotal || o.subtotal) - Math.round((o.approved_subtotal || o.subtotal) * store.commission_rate),
-      })),
+    const payouts = db
+      .prepare('SELECT * FROM payouts WHERE worker_id = ? ORDER BY requested_at DESC LIMIT 50')
+      .all(req.user.id);
+    const bank = db.prepare('SELECT bank_name, bank_code, account_name, account_number FROM merchant_profiles WHERE user_id = ?').get(req.user.id) || {};
+
+    const orderCache = new Map();
+    const orderOf = (id) => {
+      if (!orderCache.has(id)) {
+        orderCache.set(id, db.prepare('SELECT id, code, subtotal, approved_subtotal, service_fee, delivery_fee, total, created_at FROM orders WHERE id = ?').get(id) || null);
+      }
+      return orderCache.get(id);
+    };
+
+    const ledger = entries.map((e) => {
+      const order = e.order_id ? orderOf(e.order_id) : null;
+      const isSettlement = /^Settlement/.test(e.description || '') && order;
+      const gross = isSettlement ? (order.approved_subtotal || order.subtotal) : null;
+      return {
+        ...e,
+        order_code: order?.code || null,
+        gross,
+        commission: gross != null ? gross - e.amount : null,
+      };
     });
+
+    const settledRows = ledger.filter((e) => e.type === 'credit' && e.gross != null);
+    const open = payouts.filter((p) => p.status === 'requested' || p.status === 'approved');
+    const balance = walletBalance(req.user.id);
+    const held = open.reduce((s, p) => s + p.amount, 0);
+
+    res.json({
+      balance,
+      held,
+      available: balance,
+      bank: bank.account_number ? bank : null,
+      ledger,
+      payouts,
+      open_payout: open[0] || null,
+      totals: {
+        gross: settledRows.reduce((s, e) => s + e.gross, 0),
+        commission: settledRows.reduce((s, e) => s + (e.commission || 0), 0),
+        net: settledRows.reduce((s, e) => s + e.amount, 0),
+        orders: settledRows.length,
+        credited: ledger.filter((e) => e.type === 'credit').reduce((s, e) => s + e.amount, 0),
+        withdrawn: payouts.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0),
+      },
+    });
+  })
+);
+
+/* Bank details for payouts. Without an account number a withdrawal is refused,
+ * so the merchant sets it here instead of phoning support. */
+router.patch(
+  '/merchant/bank',
+  requireAuth,
+  merchantOnly,
+  asyncHandler(async (req, res) => {
+    const acct = String(req.body?.account_number || '').replace(/\s/g, '');
+    if (acct && !/^\d{10}$/.test(acct)) throw bad('Enter the 10-digit account number from your bank.');
+    const patch = {
+      bank_name: req.body?.bank_name || null,
+      bank_code: req.body?.bank_code || null,
+      account_name: req.body?.account_name || null,
+      account_number: acct || null,
+    };
+    if (patch.account_number && (!patch.bank_name || !patch.account_name)) {
+      throw bad('Add the bank name and the account name as they appear on your bank statement.');
+    }
+    db.prepare('UPDATE merchant_profiles SET bank_name = ?, bank_code = ?, account_name = ?, account_number = ? WHERE user_id = ?')
+      .run(patch.bank_name, patch.bank_code, patch.account_name, patch.account_number, req.user.id);
+    audit(req, 'merchant.bank_updated', 'user', req.user.id);
+    res.json({ bank: patch.account_number ? patch : null });
+  })
+);
+
+/*
+ * WITHDRAWAL — same rule as a rider's: the money leaves the wallet when the
+ * request is filed, so one merchant cannot file five requests against the same
+ * ₦20,000 and have every one of them look affordable.
+ */
+router.post(
+  '/merchant/payouts',
+  requireAuth,
+  merchantOnly,
+  asyncHandler(async (req, res) => {
+    const amount = Math.round(Number(req.body?.amount || 0));
+    if (!Number.isFinite(amount) || amount <= 0) throw bad('Enter the amount you want to withdraw.');
+    if (amount < 1000) throw bad('The minimum withdrawal is ₦1,000.');
+
+    const open = db
+      .prepare("SELECT * FROM payouts WHERE worker_id = ? AND status IN ('requested','approved') ORDER BY requested_at DESC LIMIT 1")
+      .get(req.user.id);
+    if (open) {
+      throw bad(
+        `You already have a ₦${open.amount.toLocaleString()} withdrawal waiting (${open.status}). ` +
+        'It will be paid to your bank account, then you can request another.'
+      );
+    }
+
+    const balance = walletBalance(req.user.id);
+    if (amount > balance) throw bad(`Your settled balance is ₦${balance.toLocaleString()}, so you can withdraw up to that.`);
+    const bank = db.prepare('SELECT * FROM merchant_profiles WHERE user_id = ?').get(req.user.id);
+    if (!bank?.account_number) throw bad('Add your bank account details below before requesting a withdrawal.');
+
+    const id = uid('po');
+    const tx = db.transaction(() => {
+      db.prepare('INSERT INTO payouts (id,worker_id,amount,status,note,requested_at,held) VALUES (?,?,?,?,?,?,1)')
+        .run(id, req.user.id, amount, 'requested', req.body?.note || null, now());
+      walletEntry(req.user.id, {
+        type: 'debit',
+        amount,
+        description: 'Withdrawal requested (held until paid)',
+      });
+    });
+    tx();
+    notify(req.user.id, {
+      title: 'Withdrawal requested',
+      body: `₦${amount.toLocaleString()} is set aside and will be paid into ${bank.bank_name} ••••${String(bank.account_number).slice(-4)}.`,
+      kind: 'payment',
+    });
+    res.status(201).json({ payout: db.prepare('SELECT * FROM payouts WHERE id = ?').get(id) });
   })
 );
 

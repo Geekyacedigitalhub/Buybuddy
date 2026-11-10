@@ -455,9 +455,13 @@ router.get(
       .all();
     const payouts = db
       .prepare(
-        `SELECT p.*, u.name AS worker_name, u.role, w.account_number, w.bank_name, w.account_name
+        `SELECT p.*, u.name AS worker_name, u.role,
+                COALESCE(w.account_number, m.account_number) AS account_number,
+                COALESCE(w.bank_name, m.bank_name) AS bank_name,
+                COALESCE(w.account_name, m.account_name) AS account_name
          FROM payouts p JOIN users u ON u.id = p.worker_id
          LEFT JOIN worker_profiles w ON w.user_id = p.worker_id
+         LEFT JOIN merchant_profiles m ON m.user_id = p.worker_id
          ORDER BY p.requested_at DESC LIMIT 100`
       )
       .all();

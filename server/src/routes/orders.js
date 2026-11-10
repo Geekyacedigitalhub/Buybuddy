@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { asyncHandler, bad, fakePin, notFound, now, orderCode, paginate, requireFields, uid, forbidden } from '../lib/util.js';
+import { buildPdf, money as pdfMoney } from '../lib/pdf.js';
 import { notify, event, settingsAll, walletEntry, audit } from '../lib/settings.js';
 import {
   calcFees,
@@ -402,6 +403,113 @@ router.get(
       payment,
       delivery_pin: order.customer_id === req.user.id ? order.delivery_pin : undefined,
     });
+  })
+);
+
+/*
+ * RECEIPT — a real PDF the customer can keep, print or send to an employer.
+ *
+ * It is built from the order as it stands (items, fees, payment, who delivered
+ * it), not from a template someone typed, so a receipt can never disagree with
+ * the order it describes.
+ */
+router.get(
+  '/orders/:id/receipt.pdf',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const order = loadOrderForUser(req);
+    const store = order.store_id ? db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id) : null;
+    const customer = db.prepare('SELECT name, phone, email FROM users WHERE id = ?').get(order.customer_id);
+    const items = order.type === 'personal'
+      ? db.prepare('SELECT * FROM shopping_items WHERE order_id = ?').all(order.id)
+          .map((i) => ({ name: i.proposed_name || i.description, qty: i.proposed_qty || i.qty, price: i.proposed_price || 0 }))
+      : db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+    const rider = order.rider_id ? db.prepare('SELECT name, phone FROM users WHERE id = ?').get(order.rider_id) : null;
+    const payment = db.prepare('SELECT * FROM payments WHERE order_id = ? ORDER BY created_at DESC LIMIT 1').get(order.id);
+    const address = (() => {
+      try { return JSON.parse(order.address_json || '{}'); } catch { return {}; }
+    })();
+
+    // 'Lekki Phase 1, Lekki Phase 1, Lagos' — the area is often also the city
+    const seenParts = new Set();
+    const addressLine =
+      [address.recipient, address.line1, address.area, address.city]
+        .map((p) => String(p || '').trim())
+        .filter((p) => {
+          if (!p) return false;
+          const key = p.toLowerCase();
+          if (seenParts.has(key)) return false;
+          seenParts.add(key);
+          return true;
+        })
+        .join(', ') || 'Address not recorded';
+
+    const green = [0.09, 0.42, 0.33];
+    const grey = [0.42, 0.45, 0.43];
+    const blocks = [
+      { text: 'BUYBUDDY', size: 20, bold: true, color: green, gap: 0 },
+      { text: 'Your Personal Shopping Partner', size: 9, color: grey, gap: 10 },
+      { text: `Receipt for ${order.code}`, size: 15, bold: true, gap: 2 },
+      { text: new Date(order.created_at).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' }), size: 9, color: grey, gap: 10 },
+      { rule: true },
+      { text: 'CUSTOMER', size: 8, bold: true, color: grey, gap: 2 },
+      { text: customer?.name || 'Customer', size: 11, bold: true, gap: 0 },
+      { text: [customer?.phone, customer?.email].filter(Boolean).join(' · '), size: 9, color: grey, gap: 8 },
+      { text: 'DELIVERED TO', size: 8, bold: true, color: grey, gap: 2 },
+      { text: addressLine, size: 10, gap: address.notes ? 2 : 8 },
+      { text: 'FROM', size: 8, bold: true, color: grey, gap: 2 },
+      { text: store?.name || 'Personal shopping (a BUYBUDDY shopper bought this for you)', size: 10, gap: 10 },
+      ...(address.notes || order.notes
+        ? [{ text: 'NOTE TO THE RIDER', size: 8, bold: true, color: grey, gap: 2 },
+           { text: address.notes || order.notes, size: 10, gap: 10 }]
+        : []),
+      { rule: true },
+      { text: 'ITEM', size: 8, bold: true, color: grey, gap: 2 },
+    ];
+
+    if (!items.length) blocks.push({ text: 'No items recorded on this order.', size: 10, color: grey, gap: 6 });
+    for (const i of items) {
+      blocks.push({ pair: [`${i.qty} x ${i.name}`, pdfMoney((i.price || 0) * (i.qty || 1))], size: 10, gap: 0 });
+    }
+
+    blocks.push(
+      { rule: true },
+      { pair: ['Subtotal', pdfMoney(order.subtotal)], size: 10 }
+    );
+    if (order.service_fee) blocks.push({ pair: ['Service fee', pdfMoney(order.service_fee)], size: 10 });
+    if (order.delivery_fee) blocks.push({ pair: ['Delivery', pdfMoney(order.delivery_fee)], size: 10 });
+    if (order.tax) blocks.push({ pair: ['Tax', pdfMoney(order.tax)], size: 10 });
+    if (order.discount) blocks.push({ pair: ['Discount', `- ${pdfMoney(order.discount)}`], size: 10 });
+    if (order.promo_code) blocks.push({ pair: [`Promo ${order.promo_code}`, ''], size: 9, color: grey });
+    blocks.push(
+      { rule: true },
+      { pair: ['TOTAL', pdfMoney(order.total)], size: 13, bold: true },
+      {
+        text:
+          order.payment_status === 'paid_cash'
+            ? 'Paid in cash to the rider on delivery'
+            : order.payment_status === 'paid'
+              ? `Paid online${payment?.reference ? ` — reference ${payment.reference}` : ''}`
+              : order.payment_status === 'refunded'
+                ? 'Refunded in full'
+                : 'Payment pending',
+        size: 10,
+        gap: 2,
+      }
+    );
+    if (rider) blocks.push({ text: `Delivered by ${rider.name}${rider.phone ? ` · ${rider.phone}` : ''}`, size: 10, gap: 2 });
+    blocks.push(
+      { text: `Status: ${String(order.status).replace(/_/g, ' ')}`, size: 10, color: grey, gap: 16 },
+      { rule: true },
+      { text: 'Questions about this receipt? Reply in the BUYBUDDY app under Help & support, quoting the order code.', size: 9, color: grey, gap: 4 },
+      { text: `Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · this document is issued electronically and needs no signature.`, size: 8, color: grey, gap: 0 }
+    );
+
+    const pdf = buildPdf({ blocks, title: `BUYBUDDY receipt ${order.code}`, author: 'BUYBUDDY' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="BUYBUDDY-${order.code}.pdf"`);
+    res.setHeader('Content-Length', pdf.length);
+    res.end(pdf);
   })
 );
 

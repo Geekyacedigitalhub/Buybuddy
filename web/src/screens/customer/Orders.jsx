@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { askConfirm } from '../../lib/ask.jsx';
-import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress, assetUrl } from '../../lib/api.js';
+import { api, naira, pretty, statusTone, timeAgo, clockTime, fmtAddress, assetUrl, downloadAndSave } from '../../lib/api.js';
 /* Leaflet is ~45 kB of map code that only one screen needs, so it loads on
    demand: the rest of the app stays light and the map still appears instantly. */
 const DeliveryMap = React.lazy(() => import('../../components/DeliveryMap.jsx'));
@@ -85,6 +85,7 @@ export function OrderDetail() {
   const [tab, setTab] = useState('summary');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [report, setReport] = useState({ category: 'order', message: '', items: [], amount: '', photo: null });
   const [reportSent, setReportSent] = useState(false);
@@ -113,6 +114,23 @@ export function OrderDetail() {
   const currentIdx = steps.indexOf(order.status);
   const progress = currentIdx < 0 ? (order.status === 'cancelled' || order.status === 'refunded' ? 100 : 0) : ((currentIdx + 1) / steps.length) * 100;
   const pendingApprovals = (order.shopping_items || []).filter((i) => i.status === 'proposed');
+
+  /*
+   * A receipt the customer can keep as a file — for an expense claim, a refund
+   * argument, or just to know what the shop actually charged. Built by the
+   * server from the order itself, so it cannot disagree with what is on screen.
+   */
+  const downloadReceipt = async () => {
+    setPdfBusy(true);
+    try {
+      await downloadAndSave(`/api/orders/${order.id}/receipt.pdf`, `BUYBUDDY-${order.code}.pdf`);
+      toast.success('Receipt saved to your downloads');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   const sendReport = async () => {
     setBusy(true);
@@ -377,6 +395,18 @@ export function OrderDetail() {
               </div>
             );
           })()}
+
+          {['paid', 'paid_cash', 'refunded'].includes(order.payment_status) && (
+            <div className="row-between">
+              <div>
+                <div className="label">Receipt</div>
+                <div className="tiny muted">A PDF with the items, fees and what you paid.</div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={downloadReceipt} disabled={pdfBusy}>
+                <Icon name="receipt" size={14} /> {pdfBusy ? 'Preparing…' : 'Download PDF'}
+              </Button>
+            </div>
+          )}
 
           <div className="divider" />
           <div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { askText } from '../lib/ask.jsx';
-import { api, naira, nairaShort, pretty, timeAgo, assetUrl, downloadFile } from '../lib/api.js';
+import { api, naira, nairaShort, pretty, timeAgo, assetUrl, downloadFile, downloadAndSave } from '../lib/api.js';
 import {
   Badge, Button, Empty, Field, Icon, Input, Loading, Modal, SectionHead, Select, StatusBadge,
   Textarea, useToast,
@@ -198,6 +198,16 @@ const MiniStat = ({ label, value }) => (
  * with money on it, a withdrawal waiting. Every line is a real order with an age,
  * and every card goes to the screen where it can be fixed.
  */
+/* "1543m" tells nobody anything — say how long in the unit a person thinks in. */
+function ageLabel(min) {
+  if (min == null) return 'new';
+  if (min < 60) return `${Math.max(0, Math.round(min))}m`;
+  if (min < 1440) return `${Math.floor(min / 60)}h ${Math.round(min % 60)}m`;
+  const d = Math.floor(min / 1440);
+  const h = Math.floor((min % 1440) / 60);
+  return `${d}d ${h}h`;
+}
+
 function Today() {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -221,12 +231,12 @@ function Today() {
   const attention = [
     {
       key: 'shop', label: 'Shops sitting on a paid order', count: q.shop_not_accepted.length,
-      detail: q.shop_not_accepted.length ? `oldest ${q.shop_not_accepted[0].waiting_minutes} min` : 'nothing over 15 minutes',
+      detail: q.shop_not_accepted.length ? `oldest waiting ${ageLabel(q.shop_not_accepted[0].waiting_minutes)}` : 'nothing over 15 minutes',
       tone: q.shop_not_accepted.length ? 'badge-danger' : 'badge-ok', to: '/admin/orders',
     },
     {
       key: 'rider', label: 'Ready, nobody riding', count: q.no_rider.length,
-      detail: q.no_rider.length ? `oldest ${q.no_rider[0].waiting_minutes} min` : 'every ready order has a rider',
+      detail: q.no_rider.length ? `oldest waiting ${ageLabel(q.no_rider[0].waiting_minutes)}` : 'every ready order has a rider',
       tone: q.no_rider.length ? 'badge-warn' : 'badge-ok', to: '/admin/orders',
     },
     {
@@ -267,7 +277,7 @@ function Today() {
             </div>
           </div>
           <Badge tone={(o.waiting_minutes || 0) >= 30 ? 'badge-danger' : (o.waiting_minutes || 0) >= 15 ? 'badge-warn' : 'badge-muted'}>
-            {o.waiting_minutes != null ? `${o.waiting_minutes}m` : 'new'}
+            {ageLabel(o.waiting_minutes)}
           </Badge>
         </div>
       ))}
@@ -275,7 +285,11 @@ function Today() {
   );
 
   return (
-    <Shell nav={NAV} title="Today" subtitle={`What needs a person, right now — ${data.day}`}>
+    <Shell
+      nav={NAV}
+      title="Today"
+      subtitle={`What needs a person, right now — ${new Date(`${data.day}T12:00:00+01:00`).toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+    >
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <Kpi label="Collected today" value={naira(data.today.collected)} hint={`${data.today.orders} orders`} />
         <Kpi label="Our fees today" value={naira(data.today.fees)} hint="Service + delivery" />
@@ -313,7 +327,7 @@ function Today() {
               <div key={c.id} className="row-between" style={{ padding: '12px 14px', borderTop: '1px solid var(--line)', gap: 10 }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="strong" style={{ fontSize: 13 }}>{c.subject}</div>
-                  <div className="tiny muted">{c.customer_name} · {c.order_code || 'no order'} · {c.age_minutes}m ago</div>
+                  <div className="tiny muted">{c.customer_name} · {c.order_code || 'no order'} · waiting {ageLabel(c.age_minutes)}</div>
                 </div>
                 <span className="mono strong">{naira(c.claim_amount)}</span>
               </div>
@@ -524,6 +538,18 @@ function Orders() {
                 }}
               >
                 Refund {naira(Math.max(0, (detail.payments.filter((p) => ['success', 'refunded'].includes(p.status)).reduce((s, p) => s + p.amount, 0) || detail.order.total) - detail.payments.reduce((s, p) => s + (p.refunded_amount || 0), 0)))}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    await downloadAndSave(`/api/orders/${detail.order.id}/receipt.pdf`, `BUYBUDDY-${detail.order.code}.pdf`);
+                    toast.success('Receipt downloaded');
+                  } catch (e) { toast.error(e.message); }
+                }}
+              >
+                <Icon name="receipt" size={14} /> Receipt
               </Button>
               <Button size="sm" variant="ghost" onClick={() => act(`/api/admin/orders/${detail.order.id}/status`, { status: 'cancelled', note: 'Cancelled by admin' }, 'Order cancelled')}>
                 Cancel order

@@ -114,6 +114,27 @@ export const downloadFile = async (path) => {
   return res.blob();
 };
 
+/**
+ * Hand a file to the browser's downloader. The path version is the one the app
+ * uses: it keeps the auth token in the request instead of in a URL, so a receipt
+ * link cannot be forwarded to someone who should not have the order.
+ */
+export const saveFile = (blob, filename) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+
+export const downloadAndSave = async (path, filename) => {
+  const blob = await downloadFile(path);
+  saveFile(blob, filename);
+  return blob;
+};
+
 export const api = {
   get: (p, opts) => request(p, opts),
   post: (p, body, opts) => request(p, { ...opts, method: 'POST', body }),

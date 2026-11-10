@@ -1949,3 +1949,52 @@ test('49. the office gets one screen of what is stuck right now', async () => {
   if (stale) assert.ok(stale.waiting_minutes >= 0);
   assert.equal(merchant.length > 10, true);
 });
+
+test('50. a customer can download a real PDF receipt for their own order, and nobody else can', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  await api('/api/cart', { method: 'DELETE', token: customer });
+  const products = (await api('/api/products?limit=200')).body.products;
+  const item = products.find((p) => p.store.name === 'GreenMart Supermarket' && p.stock > 3 && p.price >= 1500);
+  await api('/api/cart', { method: 'POST', token: customer, body: { product_id: item.id, qty: 2 } });
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const placed = await api('/api/orders/checkout', {
+    method: 'POST', token: customer, body: { address_id: address.id, payment_method: 'wallet' },
+  });
+  const order = placed.body.order;
+  assert.ok(order?.code, 'an order exists to receipt');
+
+  const raw = await fetch(`${base}/api/orders/${order.id}/receipt.pdf`, { headers: { Authorization: `Bearer ${customer}` } });
+  assert.equal(raw.status, 200, 'the customer can download it');
+  assert.match(raw.headers.get('content-type') || '', /application\/pdf/);
+  assert.match(raw.headers.get('content-disposition') || '', new RegExp(`BUYBUDDY-${order.code}\\.pdf`));
+  const bytes = Buffer.from(await raw.arrayBuffer());
+
+  // A file a PDF reader will actually open: header, catalog, xref, EOF, and the
+  // byte offsets in the cross-reference table have to point at real objects.
+  const text = bytes.toString('latin1');
+  assert.equal(text.slice(0, 8), '%PDF-1.4');
+  assert.match(text, /\/Type \/Catalog/);
+  assert.match(text, /\/Type \/Page\b/);
+  assert.match(text, /%%EOF\n$/);
+  const startxref = Number(text.match(/startxref\n(\d+)/)[1]);
+  assert.equal(text.slice(startxref, startxref + 4), 'xref', 'the xref offset lands on the table');
+  for (const m of text.matchAll(/^(\d{10}) 00000 n $/gm)) {
+    const at = Number(m[1]);
+    assert.match(text.slice(at, at + 30), /^\d+ 0 obj/, `object at byte ${at} exists`);
+  }
+  assert.ok(bytes.length > 1200, 'it is a page of content, not an empty shell');
+
+  // the receipt says the things a receipt has to say
+  assert.match(text, new RegExp(`Receipt for ${order.code}`));
+  assert.ok(text.includes('TOTAL'), 'the total is on it');
+  assert.match(text, /(Paid online|Paid in cash|Payment pending)/);
+  assert.ok(!/\?\?/.test(text) && !text.includes('\ufffd'), 'nothing came out as question marks');
+  assert.ok(!/\u20a6/.test(text), 'the naira sign is written as NGN, which the font can print');
+
+  // and it is private: someone else's order is not readable
+  const other = await login('rider@buybuddy.ng');
+  const denied = await fetch(`${base}/api/orders/${order.id}/receipt.pdf`, { headers: { Authorization: `Bearer ${other}` } });
+  assert.ok([403, 404].includes(denied.status), `a stranger gets ${denied.status}`);
+  const anon = await fetch(`${base}/api/orders/${order.id}/receipt.pdf`);
+  assert.equal(anon.status, 401, 'and a logged-out visitor gets nothing');
+});

@@ -272,7 +272,7 @@ function TaskDetail() {
     ? [
       { when: ['shopper_assigned'], label: 'Start shopping', fn: () => api.post(`/api/worker/jobs/${order.id}/start-shopping`, {}) },
       { when: ['shopping'], label: 'Submit basket for approval', fn: () => api.post(`/api/worker/jobs/${order.id}/submit-for-approval`, {}) },
-      { when: ['approved'], label: 'Mark as purchased', fn: () => api.post(`/api/worker/jobs/${order.id}/purchased`, {}) },
+      { when: ['approved'], label: 'Mark as purchased', photo: true, fn: () => api.post(`/api/worker/jobs/${order.id}/purchased`, { photo: pickupPhoto || undefined }) },
     ]
     : [
       { when: ['rider_assigned', 'ready_for_pickup'], label: 'Confirm pickup', photo: true, fn: () => api.post(`/api/worker/jobs/${order.id}/pickup`, { photo: pickupPhoto || undefined, note: pickupPhoto ? undefined : 'Order picked up — no photo taken' }) },
@@ -371,14 +371,15 @@ function TaskDetail() {
         <div className="card col" style={{ gap: 10, borderColor: 'var(--green-200)' }}>
           <div className="h3">Photo of the bag</div>
           <div className="sub">
-            One picture now is your proof — and the customer's — of exactly what you collected. If anyone says
-            something was missing or wrong, this photo settles it in seconds.
+            {isShopper
+              ? 'Photograph the sealed bags at the counter before you leave the shop. It is proof of exactly what was bought, if the customer or the rider questions the order.'
+              : "One picture now is your proof — and the customer's — of exactly what you collected. If anyone says something was missing or wrong, this photo settles it in seconds."}
           </div>
           <PhotoPicker
             value={pickupPhoto}
             onChange={setPickupPhoto}
-            label="Handover photo"
-            hint="Point the camera at the sealed bags before you leave."
+            label={isShopper ? 'Bags at the counter' : 'Handover photo'}
+            hint="Point the camera at the sealed bags — one clear photo is enough."
             size={96}
             onError={(m) => toast.error(m)}
           />
@@ -479,29 +480,43 @@ function Earnings() {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
-  const load = () => api.get('/api/worker/earnings').then(setData);
+  const load = () => api.get('/api/worker/earnings').then(setData).catch(() => setData(false));
   useEffect(() => { load(); }, []);
-  if (!data) return <Loading />;
+
+  if (data === null) return <Loading />;
+  if (data === false) return <Empty icon="wallet" title="Could not load your earnings" body="Check your connection and open this screen again." />;
 
   const withdraw = async () => {
     setBusy(true);
     try {
       await api.post('/api/worker/payouts', { amount: Number(amount) });
-      toast.success('Withdrawal requested');
+      toast.success('Withdrawal requested — we will pay it to your bank');
       setAmount('');
       load();
     } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   };
 
+  // what can actually leave the wallet: earnings minus the cash still in hand
+  const withdrawable = data.withdrawable ?? data.balance;
+  const skeleton = Number(amount);
+  const withdrawEnabled = !data.open_payout && skeleton >= 1000 && skeleton <= withdrawable;
+
   return (
     <div className="page col" style={{ gap: 16, maxWidth: 760 }}>
-      <SectionHead title="Earnings" />
+      <SectionHead title="Earnings" subtitle="Every job that paid you, and every naira that left" />
+
       <div className="card" style={{ background: 'linear-gradient(135deg,var(--green-700),var(--green-900))', color: '#fff', border: 'none' }}>
-        <div className="tiny" style={{ opacity: 0.7, fontWeight: 700, letterSpacing: '0.08em' }}>AVAILABLE BALANCE</div>
-        <div className="h1 mono" style={{ marginTop: 4 }}>{naira(data.balance)}</div>
-        <div className="row" style={{ gap: 22, marginTop: 14 }}>
+        <div className="tiny" style={{ opacity: 0.7, fontWeight: 700, letterSpacing: '0.08em' }}>AVAILABLE TO WITHDRAW</div>
+        <div className="h1 mono" style={{ marginTop: 4 }}>{naira(withdrawable)}</div>
+        {data.cash?.outstanding > 0 && (
+          <div className="tiny" style={{ opacity: 0.75, marginTop: 2 }}>
+            ₦{data.cash.outstanding.toLocaleString()} of your {naira(data.balance)} is cash in hand — see below
+          </div>
+        )}
+        <div className="row wrap" style={{ gap: 22, marginTop: 14 }}>
           <Stat label="Today" value={naira(data.summary.today)} light />
           <Stat label="This week" value={naira(data.summary.week)} light />
+          <Stat label="This month" value={naira(data.summary.month)} light />
           <Stat label="Lifetime" value={naira(data.summary.lifetime)} light />
         </div>
       </div>
@@ -528,14 +543,48 @@ function Earnings() {
       )}
 
       <div className="card col" style={{ gap: 10 }}>
-        <div className="h3">Withdraw to bank</div>
-        <div className="row" style={{ gap: 8 }}>
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₦)" />
-          <Button onClick={withdraw} disabled={busy || !amount}>Request</Button>
+        <div className="row-between">
+          <div className="h3">Withdraw to bank</div>
+          {data.summary.withdrawn > 0 && <Badge tone="badge-ok">{naira(data.summary.withdrawn)} paid out so far</Badge>}
         </div>
-        <p className="tiny muted">Minimum ₦1,000. Requests are reviewed by BUYBUDDY finance and paid to your registered bank account.</p>
+
+        {data.open_payout ? (
+          <div className="card" style={{ background: 'var(--green-50)', boxShadow: 'none' }}>
+            <div className="strong">Withdrawal of {naira(data.open_payout.amount)} is {data.open_payout.status}</div>
+            <div className="sub" style={{ marginTop: 4 }}>
+              Requested {timeAgo(data.open_payout.requested_at)}. It goes to your saved bank account once BUYBUDDY
+              finance pays it. You can request the next one after this is paid.
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="row" style={{ gap: 8 }}>
+              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₦)" />
+              <Button onClick={withdraw} disabled={busy || !withdrawEnabled}>{busy ? 'Sending…' : 'Request'}</Button>
+            </div>
+            <div className="row wrap" style={{ gap: 8 }}>
+              <Button size="sm" variant="ghost" onClick={() => setAmount(String(withdrawable))} disabled={withdrawable < 1000}>
+                All {naira(withdrawable)}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setAmount('5000')} disabled={withdrawable < 5000}>₦5,000</Button>
+            </div>
+            <p className="tiny muted" style={{ margin: 0 }}>
+              Minimum ₦1,000. The money leaves your balance the moment you ask, so it cannot be requested twice —
+              finance reviews it and pays it into the account on your profile.
+            </p>
+            {amount && Number(amount) > withdrawable && (
+              <div className="tiny" style={{ color: 'var(--danger)' }}>
+                You can withdraw up to {naira(withdrawable)} right now.
+              </div>
+            )}
+            {withdrawable < 1000 && (
+              <div className="tiny muted">Finish a job and your share lands here — the moment it passes ₦1,000 you can withdraw.</div>
+            )}
+          </>
+        )}
+
         {data.payouts.length > 0 && (
-          <div className="col" style={{ gap: 6 }}>
+          <div className="col" style={{ gap: 6, marginTop: 4 }}>
             {data.payouts.map((p) => (
               <div key={p.id} className="row-between" style={{ fontSize: 13 }}>
                 <span className="sub">{timeAgo(p.requested_at)}</span>
@@ -548,13 +597,19 @@ function Earnings() {
       </div>
 
       <div className="card card-flush">
-        <div style={{ padding: 14 }} className="h3">Transaction history</div>
+        <div style={{ padding: 14 }} className="row-between">
+          <span className="h3">Ledger</span>
+          {data.summary.jobs > 0 && <span className="tiny muted">{data.summary.jobs} jobs paid</span>}
+        </div>
         {data.entries.length === 0 && <Empty icon="wallet" title="No earnings yet" block={false} />}
         {data.entries.map((e) => (
-          <div key={e.id} className="row" style={{ gap: 10, padding: '12px 14px', borderTop: '1px solid var(--line)' }}>
+          <div key={e.id} className="row" style={{ gap: 10, padding: '12px 14px', borderTop: '1px solid var(--line)', alignItems: 'flex-start' }}>
             <div className="grow">
               <div className="strong" style={{ fontSize: 13 }}>{e.description}</div>
-              <div className="tiny muted">{timeAgo(e.created_at)}</div>
+              <div className="tiny muted">
+                {e.created_at ? timeAgo(e.created_at) : ''}
+                {e.balance_after != null ? ` · balance ${naira(e.balance_after)}` : ''}
+              </div>
             </div>
             <span className="mono strong" style={{ fontSize: 13, color: e.type === 'credit' ? 'var(--ok)' : 'var(--danger)' }}>
               {e.type === 'credit' ? '+' : '−'}{naira(e.amount)}

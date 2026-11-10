@@ -305,8 +305,18 @@ router.post(
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.orderId);
     if (!order || order.shopper_id !== req.user.id) throw forbidden('This task is not assigned to you.');
     if (order.payment_status === 'pending') throw bad('Customer has not completed payment yet.');
+    const photo = req.body?.photo ? String(req.body.photo).slice(0, 3_000_000) : null;
     if (order.status === 'approved') {
-      transition(order.id, 'purchased', { actor: req.user, actorRole: 'shopper', note: 'Items purchased — receipt uploaded' });
+      transition(order.id, 'purchased', {
+        actor: req.user,
+        actorRole: 'shopper',
+        note: photo ? 'Items purchased — bag photographed at the shop' : 'Items purchased — receipt uploaded',
+      });
+      if (photo) {
+        db.prepare('INSERT INTO receipts (id,order_id,uploaded_by,file_name,mime,data_url,note,created_at) VALUES (?,?,?,?,?,?,?,?)').run(
+          uid('rcp'), order.id, req.user.id, 'shopper-handover', 'image', photo, 'Shopper handover photo — bag sealed at the shop', now()
+        );
+      }
     }
     const afterPurchase = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
     if (afterPurchase.status === 'purchased') {
@@ -453,25 +463,40 @@ router.get(
   requireAuth,
   workerOnly,
   asyncHandler(async (req, res) => {
-    const entries = db
-      .prepare("SELECT * FROM wallet_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 200")
+    const raw = db
+      .prepare("SELECT * FROM wallet_entries WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 200")
       .all(req.user.id);
+    /* Each line is tied back to the job that paid it, so "Delivery earnings —
+       BB-2627" is a link to the order rather than a mystery amount. */
+    const orderCache = new Map();
+    const codeOf = (id) => {
+      if (!id) return null;
+      if (!orderCache.has(id)) orderCache.set(id, db.prepare('SELECT code FROM orders WHERE id = ?').get(id)?.code || null);
+      return orderCache.get(id);
+    };
+    const entries = raw.map((e) => ({ ...e, order_code: codeOf(e.order_id) }));
     const payouts = db.prepare('SELECT * FROM payouts WHERE worker_id = ? ORDER BY requested_at DESC').all(req.user.id);
     const nowD = new Date();
     const weekStart = new Date(nowD.getTime() - 7 * 864e5).toISOString();
     const monthStart = new Date(nowD.getFullYear(), nowD.getMonth(), 1).toISOString();
     const sum = (from) =>
       entries.filter((e) => e.type === 'credit' && e.created_at >= from).reduce((s, e) => s + e.amount, 0);
+    const open = payouts.filter((p) => p.status === 'requested' || p.status === 'approved');
+    const cash = req.user.role === 'rider' ? cashForRider(req.user.id) : { outstanding: 0, records: [] };
     res.json({
       balance: walletBalance(req.user.id),
       entries,
       payouts,
-      cash: req.user.role === 'rider' ? cashForRider(req.user.id) : { outstanding: 0, records: [] },
+      open_payout: open[0] || null,
+      cash,
+      withdrawable: Math.max(0, walletBalance(req.user.id) - (cash.outstanding || 0)),
       summary: {
         today: sum(new Date().toISOString().slice(0, 10) + 'T00:00'),
         week: sum(weekStart),
         month: sum(monthStart),
         lifetime: entries.filter((e) => e.type === 'credit').reduce((s, e) => s + e.amount, 0),
+        withdrawn: payouts.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0),
+        jobs: new Set(entries.filter((e) => e.type === 'credit' && e.order_code).map((e) => e.order_code)).size,
       },
     });
   })

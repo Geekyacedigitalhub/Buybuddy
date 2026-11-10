@@ -1784,3 +1784,75 @@ test('46. a missing item becomes a claim the office can pay, and a pickup can be
   const total = (await api('/api/support/tickets', { token: customer })).body.tickets.find((t) => t.id === ticketId);
   assert.ok(total.refunded_amount >= 800);
 });
+
+test('47. a shopper photographs the bag at the shop, and a rider can read their own ledger', async () => {
+  const customer = await login('customer@buybuddy.ng');
+  const shopper = await login('shopper@buybuddy.ng');
+  const rider = await login('rider@buybuddy.ng');
+  const admin = await login('admin@buybuddy.ng');
+  await api('/api/worker/availability', { method: 'POST', token: rider, body: { available: true } });
+
+  const address = (await api('/api/addresses', { token: customer })).body.addresses[0];
+  const created = await api('/api/shopping/requests', {
+    method: 'POST', token: customer,
+    body: {
+      address_id: address.id, payment_method: 'wallet', budget: 6000,
+      items: [{ description: 'Semovita 2kg', qty: 1, target_price: 3200 }],
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const orderId = created.body.order.id;
+
+  await api(`/api/worker/jobs/${orderId}/accept`, { method: 'POST', token: shopper, body: { role: 'shopper' } });
+  await api(`/api/worker/jobs/${orderId}/start-shopping`, { method: 'POST', token: shopper });
+  const shopping = (await api(`/api/orders/${orderId}`, { token: customer })).body.order;
+  await api(`/api/worker/jobs/${orderId}/items/${shopping.shopping_items[0].id}`, {
+    method: 'PATCH', token: shopper, body: { proposed_price: 3200 },
+  });
+  await api(`/api/worker/jobs/${orderId}/submit-for-approval`, { method: 'POST', token: shopper });
+  const awaiting = (await api(`/api/orders/${orderId}`, { token: customer })).body.order;
+  await api(`/api/orders/${orderId}/approvals`, {
+    method: 'POST', token: customer,
+    body: { items: awaiting.shopping_items.map((i) => ({ id: i.id, action: 'approve' })) },
+  });
+
+  // the shopper seals the bag and photographs it at the counter
+  const bought = await api(`/api/worker/jobs/${orderId}/purchased`, {
+    method: 'POST', token: shopper, body: { photo: 'data:image/png;base64,iVBORw0KGgo=' },
+  });
+  assert.equal(bought.status, 200, JSON.stringify(bought.body));
+  const customerView = await api(`/api/orders/${orderId}`, { token: customer });
+  assert.ok(
+    customerView.body.receipts.some((r) => /shopper handover photo/i.test(r.note || '')),
+    'the customer can see the shopper\u2019s photo of the sealed bag'
+  );
+
+  // the rider collects it with their own photo, delivers, customer confirms
+  await api(`/api/worker/jobs/${orderId}/accept`, { method: 'POST', token: rider, body: { role: 'rider' } });
+  await api(`/api/worker/jobs/${orderId}/pickup`, { method: 'POST', token: rider, body: { photo: 'data:image/png;base64,iVBORw0KGgo=' } });
+  await api(`/api/worker/jobs/${orderId}/in-transit`, { method: 'POST', token: rider });
+  const pin = (await api(`/api/orders/${orderId}`, { token: customer })).body.order.delivery_pin;
+  await api(`/api/worker/jobs/${orderId}/deliver`, { method: 'POST', token: rider, body: { pin } });
+  await api(`/api/orders/${orderId}/confirm-delivery`, { method: 'POST', token: customer });
+
+  const proof = (await api(`/api/orders/${orderId}`, { token: customer })).body.receipts;
+  assert.equal(proof.filter((r) => /handover|shopper/i.test(r.note || '')).length >= 2, true, 'both handovers are photographed');
+
+  // the rider's earnings read like a ledger, not a number
+  const earnings = await api('/api/worker/earnings', { token: rider });
+  assert.equal(earnings.status, 200, JSON.stringify(earnings.body));
+  const line = earnings.body.entries.find((e) => e.order_code === customerView.body.order.code);
+  assert.ok(line, 'the earning carries the order code it came from');
+  assert.equal(line.type, 'credit');
+  assert.ok(line.balance_after > 0, 'and the balance after that line');
+  assert.equal(typeof earnings.body.withdrawable, 'number');
+  assert.ok(earnings.body.summary.jobs >= 1);
+  assert.ok('month' in earnings.body.summary && 'withdrawn' in earnings.body.summary);
+  assert.equal('open_payout' in earnings.body, true, 'the screen knows whether a withdrawal is already waiting');
+  if (earnings.body.open_payout) assert.ok(['requested', 'approved'].includes(earnings.body.open_payout.status));
+
+  // a rider holding cash cannot withdraw past it; the numbers say so
+  if (earnings.body.cash.outstanding > 0) {
+    assert.ok(earnings.body.withdrawable <= earnings.body.balance, 'withdrawable never exceeds the balance');
+  }
+});

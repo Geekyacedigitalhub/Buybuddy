@@ -819,3 +819,8 @@ html, body { overflow-x: hidden; }
    detail, for example). Same z-index meant the sheet rendered underneath it and
    the button looked dead, so the ask layer always sits on top. */
 .ask-layer .modal-backdrop { z-index: 200; }
+
+/* A price must never break across two lines — "₦8,937" wrapping to "₦8,93 / 7"
+   reads like a different number. Titles shrink instead. */
+.row-between > .mono, .row-between > .money { white-space: nowrap; }
+.row-between > span:first-child, .row-between > div:first-child { min-width: 0; }

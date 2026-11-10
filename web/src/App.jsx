@@ -181,7 +181,7 @@ function WorkerShell({ children }) {
       <div className="topbar">
         <div className="topbar-inner">
           <Logo size={30} />
-          <span className="badge badge-green" style={{ marginLeft: 6 }}>
+          <span className="badge badge-green hide-xs" style={{ marginLeft: 6 }}>
             {user.role === 'rider' ? 'Rider' : 'Shopper'}
           </span>
           <div className="spacer" />

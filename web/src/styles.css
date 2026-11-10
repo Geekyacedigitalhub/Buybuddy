@@ -247,6 +247,14 @@ ul { margin: 0; padding: 0; list-style: none; }
   box-shadow: 0 8px 18px rgba(23,107,85,0.28);
 }
 
+/* The topbar carries the logo, the role badge, the bell and log out. On a 360 px
+   phone the word "Shopper" was the 18 px that pushed log out off the screen, so
+   the badge steps aside on the narrowest screens — the tabs already say what
+   kind of account this is. */
+@media (max-width: 420px) {
+  .hide-xs { display: none !important; }
+}
+
 /* -------------------------------- chips --------------------------------- */
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }

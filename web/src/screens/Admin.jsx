@@ -293,7 +293,13 @@ function Today() {
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <Kpi label="Collected today" value={naira(data.today.collected)} hint={`${data.today.orders} orders`} />
         <Kpi label="Our fees today" value={naira(data.today.fees)} hint="Service + delivery" />
-        <Kpi label="Avg order" value={naira(data.today.avg_order)} hint={`${data.today.completed} completed`} />
+        <Kpi
+          label="Avg order"
+          value={naira(data.today.avg_order)}
+          hint={data.today.completed
+            ? `over the ${data.today.completed} finished`
+            : `over the ${data.today.orders} placed so far`}
+        />
         <Kpi label="New customers" value={data.today.new_customers} hint="Signed up today" />
       </div>
 

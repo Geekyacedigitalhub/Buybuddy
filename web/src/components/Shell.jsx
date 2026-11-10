@@ -15,7 +15,7 @@ export default function Shell({ nav, title, subtitle, children, accent = 'admin'
         </div>
         {nav.map((item) =>
           item.section ? (
-            <div key={item.section} className="tiny" style={{ padding: '14px 12px 6px', opacity: 0.5, letterSpacing: '0.1em', fontWeight: 700 }}>
+            <div key={item.section} className="tiny" style={{ padding: '14px 12px 6px', opacity: 0.88, letterSpacing: '0.1em', fontWeight: 700 }}>
               {item.section.toUpperCase()}
             </div>
           ) : (
@@ -27,7 +27,7 @@ export default function Shell({ nav, title, subtitle, children, accent = 'admin'
             >
               <Icon name={item.icon} size={17} />
               <span className="grow">{item.label}</span>
-              <span className="tiny" style={{ opacity: 0.7 }}>{item.count ?? ''}</span>
+              <span className="tiny" style={{ opacity: 0.9 }}>{item.count ?? ''}</span>
             </NavLink>
           )
         )}
@@ -38,7 +38,7 @@ export default function Shell({ nav, title, subtitle, children, accent = 'admin'
             </div>
             <div className="grow" style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
-              <div className="tiny" style={{ opacity: 0.6 }}>{user.role}</div>
+              <div className="tiny" style={{ opacity: 0.9 }}>{user.role}</div>
             </div>
           </div>
           <button className="side-link" onClick={logout}><Icon name="logout" size={16} /> Sign out</button>

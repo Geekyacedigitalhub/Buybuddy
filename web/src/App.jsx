@@ -106,11 +106,16 @@ function CustomerShell({ children }) {
           <button className="btn btn-ghost btn-icon hide-xxs" onClick={() => nav('/favourites')} aria-label="Favourites">
             <Icon name="heart" size={18} />
           </button>
-          <button className="btn btn-ghost btn-icon" style={{ position: 'relative' }} onClick={() => nav('/cart')} aria-label="Cart">
+          <button
+            className="btn btn-ghost btn-icon"
+            style={{ position: 'relative' }}
+            onClick={() => nav('/cart')}
+            aria-label={cart.count > 0 ? `Cart, ${cart.count} item${cart.count === 1 ? '' : 's'}` : 'Cart'}
+          >
             <Icon name="bag" size={18} />
             {cart.count > 0 && (
               <span style={{
-                position: 'absolute', top: -4, right: -4, background: 'var(--orange)', color: '#fff',
+                position: 'absolute', top: -4, right: -4, background: '#b4551c', color: '#fff',
                 borderRadius: 999, fontSize: 10, fontWeight: 800, minWidth: 17, height: 17,
                 display: 'grid', placeItems: 'center', padding: '0 4px',
               }}>{cart.count}</span>

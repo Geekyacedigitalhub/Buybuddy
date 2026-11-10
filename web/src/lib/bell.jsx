@@ -114,7 +114,7 @@ export function NotificationsBell({ role = 'customer' }) {
         {unread > 0 && (
           <span
             style={{
-              position: 'absolute', top: -4, right: -4, background: 'var(--orange)', color: '#fff',
+              position: 'absolute', top: -4, right: -4, background: '#b4551c', color: '#fff',
               borderRadius: 999, fontSize: 10, fontWeight: 800, minWidth: 17, height: 17,
               display: 'grid', placeItems: 'center', padding: '0 4px',
             }}

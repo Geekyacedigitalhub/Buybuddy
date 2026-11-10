@@ -239,7 +239,7 @@ export function Rewards() {
         {loyalty.entries.length === 0 && <Empty icon="star" title="No points yet" body="You earn points automatically when an order is completed." />}
         {loyalty.entries.map((e) => (
           <div key={e.id} className="row" style={{ gap: 10, padding: '12px 14px', borderTop: '1px solid var(--line)' }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: e.points > 0 ? 'var(--ok-soft)' : 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: e.points > 0 ? 'var(--ok)' : 'var(--orange)', fontSize: 13, fontWeight: 800 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: e.points > 0 ? 'var(--ok-soft)' : 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: e.points > 0 ? 'var(--ok)' : 'var(--orange-ink)', fontSize: 13, fontWeight: 800 }}>
               {e.points > 0 ? '+' : '−'}
             </div>
             <div className="grow">
@@ -326,7 +326,7 @@ export function Wallet() {
         {data.entries.length === 0 && <Empty icon="wallet" title="No transactions yet" />}
         {data.entries.map((e, i) => (
           <div key={e.id} className="row" style={{ gap: 12, padding: '12px 14px', borderTop: '1px solid var(--line)' }}>
-            <div style={{ width: 34, height: 34, borderRadius: 11, background: e.type === 'credit' ? 'var(--ok-soft)' : 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: e.type === 'credit' ? 'var(--ok)' : 'var(--orange)' }}>
+            <div style={{ width: 34, height: 34, borderRadius: 11, background: e.type === 'credit' ? 'var(--ok-soft)' : 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: e.type === 'credit' ? 'var(--ok)' : 'var(--orange-ink)' }}>
               <Icon name={e.type === 'credit' ? 'plus' : 'minus'} size={15} />
             </div>
             <div className="grow">

@@ -207,7 +207,7 @@ function Dashboard({ me, reload }) {
 
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <Kpi label="Orders today" value={metrics.orders_today} hint={`${metrics.orders_total} lifetime`} />
-        <Kpi label="Awaiting acceptance" value={metrics.pending_acceptance} hint="Accept to start preparing" tone={metrics.pending_acceptance ? 'var(--orange)' : undefined} />
+        <Kpi label="Awaiting acceptance" value={metrics.pending_acceptance} hint="Accept to start preparing" tone={metrics.pending_acceptance ? 'var(--orange-ink)' : undefined} />
         <Kpi label="GMV" value={naira(metrics.gmv)} hint={`Net ${naira(metrics.net_earnings)}`} />
         <Kpi label="Wallet" value={naira(metrics.wallet_balance)} hint="Settled earnings" />
       </div>
@@ -235,7 +235,7 @@ function Dashboard({ me, reload }) {
                       className="row"
                       style={{ gap: 8, marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#FFF8EC', border: '1px solid #F3DDB4', alignItems: 'flex-start' }}
                     >
-                      <Icon name="clock" size={15} style={{ marginTop: 2, color: 'var(--orange)' }} />
+                      <Icon name="clock" size={15} style={{ marginTop: 2, color: 'var(--orange-ink)' }} />
                       <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
                         <strong>Booked for {new Date(o.scheduled_for).toLocaleString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.</strong>{' '}
                         It appears here to accept about an hour before, so it reaches the customer hot. Nothing to do until then.
@@ -387,7 +387,7 @@ function Orders() {
           ))}
         </div>
 
-        <div className="card card-flush table-wrap wide-only">
+        <div className="card card-flush table-wrap wide-only" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead>
               <tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Placed</th><th /></tr>
@@ -506,7 +506,7 @@ function Products({ me }) {
           ))}
         </div>
 
-        <div className="card card-flush table-wrap wide-only">
+        <div className="card card-flush table-wrap wide-only" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th /></tr></thead>
             <tbody>
@@ -694,7 +694,7 @@ function Settlements() {
             ))}
           </div>
 
-          <div className="card card-flush table-wrap wide-only">
+          <div className="card card-flush table-wrap wide-only" role="group" aria-label="Scrollable table" tabIndex={0}>
             <table className="table">
               <thead><tr><th>Date</th><th>What</th><th>Order</th><th>Gross</th><th>Commission</th><th>Net</th><th>Balance</th></tr></thead>
               <tbody>
@@ -723,7 +723,7 @@ function Settlements() {
       {data.payouts.length > 0 && (
         <>
           <SectionHead title="Withdrawals" />
-          <div className="card card-flush table-wrap">
+          <div className="card card-flush table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
             <table className="table">
               <thead><tr><th>Requested</th><th>Amount</th><th>Status</th><th>Paid</th></tr></thead>
               <tbody>

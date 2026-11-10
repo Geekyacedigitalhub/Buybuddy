@@ -138,7 +138,7 @@ export function AskHost() {
 
       {req.mode === 'confirm' && req.detail && (
         <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
-          <Icon name="bell" size={16} style={{ color: 'var(--orange)', marginTop: 2 }} />
+          <Icon name="bell" size={16} style={{ color: 'var(--orange-ink)', marginTop: 2 }} />
           <div className="tiny muted" style={{ lineHeight: 1.6 }}>{req.detail}</div>
         </div>
       )}

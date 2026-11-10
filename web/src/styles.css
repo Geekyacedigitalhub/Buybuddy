@@ -10,17 +10,20 @@
   --green-600: #1e8266;
   --green-100: #e4efe9;
   --green-50: #f0f7f3;
-  --orange: #e4792f;
+  --orange: #e4792f;          /* brand accent: fills, glows, large marks */
+  --orange-ink: #a4511a;       /* the same warmth, but readable as text (5.4:1) */
   --orange-soft: #fdefe2;
   --ink: #14211c;
   --ink-2: #4b5a53;
-  --ink-3: #7c8b83;
+  /* muted text has to be readable in Lagos sunlight on a ₦40,000 phone: 5.8:1 on
+     white and 5.4:1 on the page tint, instead of the 3.3:1 it used to be */
+  --ink-3: #5a6961;
   --line: #e3e8e4;
   --bg: #f5f7f4;
   --card: #ffffff;
   --danger: #c0392b;
   --danger-soft: #fdeaea;
-  --warn: #b7791f;
+  --warn: #8a5a12;
   --warn-soft: #fdf6e3;
   --ok: #1f7a4d;
   --ok-soft: #e7f5ec;
@@ -123,7 +126,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .btn-primary { background: var(--green-700); color: #fff; box-shadow: 0 6px 16px rgba(23, 107, 85, 0.22); }
 .btn-primary:hover:not(:disabled) { background: var(--green-600); }
 .btn-dark { background: var(--ink); color: #fff; }
-.btn-accent { background: var(--orange); color: #fff; box-shadow: 0 6px 16px rgba(228, 121, 47, 0.24); }
+.btn-accent { background: #b4551c; color: #fff; box-shadow: 0 6px 16px rgba(228, 121, 47, 0.24); }
 .btn-ghost { background: transparent; border-color: var(--line); color: var(--ink); }
 .btn-ghost:hover:not(:disabled) { background: #f2f5f2; }
 .btn-soft { background: var(--green-50); color: var(--green-800); }
@@ -275,8 +278,13 @@ ul { margin: 0; padding: 0; list-style: none; }
 .prod {
   background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm);
   overflow: hidden; cursor: pointer; display: flex; flex-direction: column;
-  transition: box-shadow 0.18s, transform 0.18s;
+  transition: box-shadow 0.18s, transform 0.18s; position: relative;
 }
+/* the whole card is one link: a thumb can tap anywhere, a keyboard gets a real
+   link with a name, and nothing is nested inside anything */
+.prod-hit { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.prod-hit:focus-visible { outline: 3px solid var(--green-600); outline-offset: -3px; }
+.prod .prod-add { position: relative; z-index: 2; }
 .prod:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
 .prod-img { aspect-ratio: 1 / 1; background: var(--green-50); position: relative; }
 .prod-img img { width: 100%; height: 100%; object-fit: cover; }
@@ -391,7 +399,10 @@ ul { margin: 0; padding: 0; list-style: none; }
   display: none; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; overflow: auto;
 }
 @media (min-width: 980px) { .side { display: flex; } }
-.side-brand { padding: 6px 8px 18px; color: #fff; }
+.side-brand { padding: 6px 8px 18px; color: #fff; overflow: hidden; }
+/* the tagline was running off the 244 px sidebar ("YOUR PERSONAL SHOPPING PA…"):
+   let it wrap onto two lines instead of being cut in half */
+.side-brand .logo small { font-size: 9px; letter-spacing: 0.09em; white-space: normal; line-height: 1.4; }
 .side-link {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px;
   font-size: 13.5px; font-weight: 600; color: #b8d3c9; cursor: pointer; border: none; background: none; text-align: left; width: 100%;
@@ -399,6 +410,14 @@ ul { margin: 0; padding: 0; list-style: none; }
 .side-link:hover { background: rgba(255,255,255,0.07); color: #fff; }
 .side-link.active { background: var(--green-700); color: #fff; }
 .side-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.1); }
+/* On the dark sidebar every muted token has to invert: the same #566159 that is
+   readable on a white card is 2.3:1 against this green and disappears. */
+.side .logo small,
+.side .sub,
+.side .muted,
+.side .tiny,
+.side .hint { color: rgba(255, 255, 255, 0.82) !important; }
+.side .logo { color: #fff; }
 .mobile-bar { display: flex; gap: 8px; overflow-x: auto; padding: 10px 14px; background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20; }
 @media (min-width: 980px) { .mobile-bar { display: none; } }
 .content { padding: 20px; max-width: 1400px; width: 100%; }
@@ -520,7 +539,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   /* warmer neutrals so white cards sit on a tinted canvas, not grey mush */
   --ink: #0F1F19;
   --ink-2: #43554D;
-  --ink-3: #7A8B83;
+  /* 5.8:1 on white, 5.4:1 on the tinted canvas — the old #7A8B83 was 3.3:1, which
+     is unreadable in sunlight and fails WCAG AA for body text */
+  --ink-3: #566159;
   --line: #E6EBE7;
   --bg: #F4F7F5;
   --card: #FFFFFF;

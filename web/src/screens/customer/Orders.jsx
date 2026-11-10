@@ -229,12 +229,12 @@ export function OrderDetail() {
   return (
     <div className="page page-tight col" style={{ gap: 14 }}>
       <div className="row">
-        <button className="btn btn-ghost btn-icon" onClick={() => nav('/orders')}><Icon name="left" /></button>
+        <button className="btn btn-ghost btn-icon" onClick={() => nav('/orders')} aria-label="Back to your orders"><Icon name="left" /></button>
         <div className="grow">
           <div className="h2">{order.type === 'personal' ? 'Personal shopping' : order.store?.name || 'Order'}</div>
           <div className="sub mono">{order.code} · {timeAgo(order.created_at)}</div>
           {order.scheduled_for && (
-            <div className="tiny" style={{ color: 'var(--orange)', fontWeight: 700, marginTop: 2 }}>
+            <div className="tiny" style={{ color: 'var(--orange-ink)', fontWeight: 700, marginTop: 2 }}>
               {order.released_at ? 'Booked for ' : 'Booked for '}
               {new Date(order.scheduled_for).toLocaleString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
               {!order.released_at && ' — work starts about an hour before'}
@@ -341,7 +341,7 @@ export function OrderDetail() {
                       Requested: {it.description} × {it.qty}
                       {it.proposed_price ? ` · Found at ${naira(it.proposed_price)}` : ''}
                     </div>
-                    {it.note && <div className="tiny" style={{ color: 'var(--orange)', marginTop: 3 }}>{it.note}</div>}
+                    {it.note && <div className="tiny" style={{ color: 'var(--orange-ink)', marginTop: 3 }}>{it.note}</div>}
                   </div>
                   <StatusBadge status={it.status} />
                 </div>

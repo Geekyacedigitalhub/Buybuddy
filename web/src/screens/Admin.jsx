@@ -112,7 +112,7 @@ function Overview() {
           <div className="h3">Recent orders</div>
           <a className="btn btn-ghost btn-sm" href="#/admin/orders">View all</a>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead><tr><th>Order</th><th>Customer</th><th>Type</th><th>Total</th><th>Status</th><th>Placed</th></tr></thead>
             <tbody>
@@ -409,13 +409,13 @@ function Orders() {
     <Shell nav={NAV} title="Orders" subtitle="Search, assign workers, resolve disputes and refund">
       <div className="row wrap" style={{ gap: 8, marginBottom: 14 }}>
         <Input value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder="Search order code…" style={{ maxWidth: 240 }} />
-        <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} style={{ maxWidth: 190 }}>
+        <Select aria-label="Filter orders by status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} style={{ maxWidth: 190 }}>
           <option value="">All statuses</option>
           {['pending_payment', 'paid', 'accepted', 'preparing', 'ready_for_pickup', 'open_for_shoppers', 'shopper_assigned', 'shopping', 'awaiting_approval', 'approved', 'purchased', 'rider_assigned', 'picked_up', 'in_transit', 'delivered', 'completed', 'cancelled', 'refunded'].map((s) => (
             <option key={s} value={s}>{pretty(s)}</option>
           ))}
         </Select>
-        <Select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })} style={{ maxWidth: 170 }}>
+        <Select aria-label="Filter orders by type" value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })} style={{ maxWidth: 170 }}>
           <option value="">All types</option>
           <option value="merchant">Merchant</option>
           <option value="personal">Personal shopping</option>
@@ -456,7 +456,7 @@ function Orders() {
           ))}
         </div>
 
-        <div className="card card-flush table-wrap wide-only">
+        <div className="card card-flush table-wrap wide-only" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead><tr><th>Order</th><th>Customer</th><th>Store / type</th><th>Total</th><th>Payment</th><th>Status</th><th>Workers</th><th /></tr></thead>
             <tbody>
@@ -621,18 +621,18 @@ function People() {
     <Shell nav={NAV} title="Customers & people" subtitle="Every account on the platform, with suspension controls">
       <div className="row wrap" style={{ gap: 8, marginBottom: 14 }}>
         <Input value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder="Name, email or phone…" style={{ maxWidth: 260 }} />
-        <Select value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value })} style={{ maxWidth: 170 }}>
+        <Select aria-label="Filter users by role" value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value })} style={{ maxWidth: 170 }}>
           <option value="">All roles</option>
           {['customer', 'merchant', 'shopper', 'rider', 'admin'].map((r) => <option key={r} value={r}>{pretty(r)}</option>)}
         </Select>
-        <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} style={{ maxWidth: 170 }}>
+        <Select aria-label="Filter users by status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} style={{ maxWidth: 170 }}>
           <option value="">All statuses</option>
           {['active', 'pending', 'suspended', 'restricted'].map((s) => <option key={s} value={s}>{pretty(s)}</option>)}
         </Select>
         <div className="spacer" /><span className="sub">{data?.total ?? 0} accounts</span>
       </div>
       {!data ? <Loading /> : (
-        <div className="card card-flush table-wrap">
+        <div className="card card-flush table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead><tr><th>Name</th><th>Contact</th><th>Role</th><th>Orders</th><th>Wallet</th><th>Status</th><th>Joined</th><th /></tr></thead>
             <tbody>
@@ -727,7 +727,7 @@ function Listings() {
     <Shell nav={NAV} title="Listings" subtitle="Every product on the marketplace — take a bad one down without freezing the whole shop">
       <div className="row wrap" style={{ gap: 8, marginBottom: 14 }}>
         <Input value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder="Product or store name…" style={{ maxWidth: 280 }} />
-        <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} style={{ maxWidth: 190 }}>
+        <Select aria-label="Filter products by visibility" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} style={{ maxWidth: 190 }}>
           <option value="">Everything</option>
           <option value="active">On the marketplace</option>
           <option value="inactive">Hidden</option>
@@ -737,7 +737,7 @@ function Listings() {
       {!data ? <Loading /> : data.products.length === 0 ? (
         <Empty icon="box" title="No listings match" body="Try a different name, or clear the filter." />
       ) : (
-        <div className="card card-flush table-wrap">
+        <div className="card card-flush table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead><tr><th>Product</th><th>Store</th><th>Price</th><th>Stock</th><th>Status</th><th /></tr></thead>
             <tbody>
@@ -817,7 +817,7 @@ function Merchants() {
           ))}
         </div>
       )}
-      <div className="card card-flush table-wrap">
+      <div className="card card-flush table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
         <table className="table">
           <thead><tr><th>Store</th><th>Owner</th><th>Area</th><th>Products</th><th>Orders</th><th>Rating</th><th>Status</th><th /></tr></thead>
           <tbody>
@@ -897,7 +897,7 @@ function Workers() {
           ))}
         </div>
       )}
-      <div className="card card-flush table-wrap">
+      <div className="card card-flush table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
         <table className="table">
           <thead><tr><th>Name</th><th>Roles</th><th>Service areas</th><th>Jobs</th><th>Rating</th><th>Wallet</th><th>Status</th><th /></tr></thead>
           <tbody>
@@ -967,7 +967,7 @@ function Finance() {
         <Kpi label="Captured" value={naira(data.totals.captured)} />
         <Kpi label="Pending" value={naira(data.totals.pending)} />
         <Kpi label="Refunded" value={naira(data.totals.refunded)} />
-        <Kpi label="Payouts requested" value={naira(data.totals.payouts_requested)} tone="var(--orange)" />
+        <Kpi label="Payouts requested" value={naira(data.totals.payouts_requested)} tone="var(--orange-ink)" />
       </div>
 
       {cash && cash.records.length > 0 && (
@@ -977,11 +977,11 @@ function Finance() {
               <div className="h3">Cash riders are holding</div>
               <div className="tiny muted">Cash-on-delivery money the customer has already paid. Mark it received when it reaches you.</div>
             </div>
-            <div className="mono strong" style={{ color: cash.outstanding_total ? 'var(--orange)' : 'var(--ok)', fontSize: 18 }}>
+            <div className="mono strong" style={{ color: cash.outstanding_total ? 'var(--orange-ink)' : 'var(--ok)', fontSize: 18 }}>
               {naira(cash.outstanding_total)}
             </div>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
             <table className="table">
               <thead><tr><th>Order</th><th>Rider</th><th>Collected</th><th>Refunded</th><th>Still owed</th><th>Status</th><th /></tr></thead>
               <tbody>
@@ -1008,7 +1008,7 @@ function Finance() {
 
       <div className="card card-flush" style={{ marginBottom: 16 }}>
         <div style={{ padding: 14 }} className="h3">Payout requests</div>
-        <div className="table-wrap">
+        <div className="table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead><tr><th>Worker</th><th>Amount</th><th>Bank</th><th>Requested</th><th>Status</th><th /></tr></thead>
             <tbody>
@@ -1037,7 +1037,7 @@ function Finance() {
 
       <div className="card card-flush">
         <div style={{ padding: 14 }} className="h3">Recent payments</div>
-        <div className="table-wrap">
+        <div className="table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
           <table className="table">
             <thead><tr><th>Reference</th><th>Order</th><th>Customer</th><th>Amount</th><th>Provider</th><th>Status</th><th>When</th></tr></thead>
             <tbody>
@@ -1127,7 +1127,7 @@ function Marketing() {
               <Button size="sm" onClick={() => setOpen(true)}>New promo</Button>
             </div>
             {!promos ? <Loading block={false} /> : (
-              <div className="table-wrap">
+              <div className="table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
                 <table className="table">
                   <thead><tr><th>Code</th><th>Type</th><th>Value</th><th>Min</th><th>Used</th><th>Status</th><th /></tr></thead>
                   <tbody>
@@ -1168,7 +1168,7 @@ function Marketing() {
         <div className="card col" style={{ gap: 12 }}>
           <div className="h3">Send a push notification</div>
           <Field label="Audience">
-            <Select value={broadcast.role} onChange={(e) => setBroadcast({ ...broadcast, role: e.target.value })}>
+            <Select aria-label="Send to which role" value={broadcast.role} onChange={(e) => setBroadcast({ ...broadcast, role: e.target.value })}>
               <option value="customer">All customers</option>
               <option value="shopper">All shoppers</option>
               <option value="rider">All riders</option>
@@ -1188,7 +1188,7 @@ function Marketing() {
           <Field label="Description"><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           <div className="row" style={{ gap: 10 }}>
             <Field label="Type">
-              <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <Select aria-label="Type of banner" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
                 <option value="percent">Percent off</option>
                 <option value="fixed">Fixed amount</option>
                 <option value="free_delivery">Free delivery</option>
@@ -1487,7 +1487,7 @@ function Audit() {
   if (!logs) return <Loading block />;
   return (
     <Shell nav={NAV} title="Audit log" subtitle="Every privileged action, recorded">
-      <div className="card card-flush table-wrap">
+      <div className="card card-flush table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
         <table className="table">
           <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th><th>IP</th></tr></thead>
           <tbody>
@@ -1576,7 +1576,7 @@ function Integrations() {
       {data.recentSms?.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <div className="h3" style={{ marginBottom: 8 }}>Recent text messages</div>
-          <div className="table-wrap">
+          <div className="table-wrap" role="group" aria-label="Scrollable table" tabIndex={0}>
             <table className="table">
               <thead>
                 <tr><th>Phone</th><th>Status</th><th>Provider</th><th>When</th></tr>

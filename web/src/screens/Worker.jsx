@@ -353,7 +353,7 @@ function TaskDetail() {
                       {it.target_price ? `Expected ${naira(it.target_price)}` : 'No expected price'}
                       {it.proposed_price ? ` · Found ${naira(it.proposed_price)}` : ''}
                     </div>
-                    {it.note && <div className="tiny" style={{ color: 'var(--orange)' }}>{it.note}</div>}
+                    {it.note && <div className="tiny" style={{ color: 'var(--orange-ink)' }}>{it.note}</div>}
                   </div>
                   <StatusBadge status={it.status} />
                 </div>
@@ -535,7 +535,7 @@ function Earnings() {
         <div className="card col" style={{ gap: 10, borderColor: '#f0dfb4', background: '#FFFBF2' }}>
           <div className="row-between">
             <div className="h3">Cash in hand</div>
-            <span className="mono strong" style={{ color: 'var(--orange)' }}>{naira(data.cash.outstanding)}</span>
+            <span className="mono strong" style={{ color: 'var(--orange-ink)' }}>{naira(data.cash.outstanding)}</span>
           </div>
           <p className="tiny muted" style={{ margin: 0 }}>
             You collected this in cash on delivery orders. Your delivery fee is already yours — hand the rest

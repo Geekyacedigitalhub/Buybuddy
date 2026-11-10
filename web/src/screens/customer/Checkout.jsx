@@ -225,7 +225,7 @@ export function Checkout() {
   return (
     <div className="page page-tight col" style={{ gap: 14 }}>
       <div className="row">
-        <button className="btn btn-ghost btn-icon" onClick={() => nav('/cart')}><Icon name="left" /></button>
+        <button className="btn btn-ghost btn-icon" onClick={() => nav('/cart')} aria-label="Back to your cart"><Icon name="left" /></button>
         <div className="h2">Checkout</div>
       </div>
 
@@ -265,7 +265,7 @@ export function Checkout() {
             }}>
               <div className="strong" style={{ fontSize: 13.5 }}>{o.title}</div>
               <div className="sub">{o.sub}</div>
-              <div className="tiny" style={{ color: 'var(--orange)', fontWeight: 700, marginTop: 4 }}>
+              <div className="tiny" style={{ color: 'var(--orange-ink)', fontWeight: 700, marginTop: 4 }}>
                 {o.extra ? `+${naira(o.extra)}` : 'No extra fee'}
               </div>
             </button>

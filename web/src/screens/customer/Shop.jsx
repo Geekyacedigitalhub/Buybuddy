@@ -253,8 +253,21 @@ export function ProductCard({ product, compact }) {
     }
   };
 
+  /*
+   * The whole card used to be `role="button"` with the + button inside it, which
+   * means a screen reader announces one button and then finds another control
+   * nested inside it — 91 of those across four screens. The card is now a plain
+   * container with a real link laid over the top of it: the same one-tap target
+   * for a thumb, a proper link for a keyboard and a screen reader, and the add
+   * button sits above the link instead of inside it.
+   */
   return (
-    <div className="prod" onClick={() => nav(`/product/${product.id}`)} role="button" tabIndex={0}>
+    <div className="prod">
+      <Link
+        to={`/product/${product.id}`}
+        className="prod-hit"
+        aria-label={`${product.name}${product.store?.name ? `, ${product.store.name}` : ''}, ${naira(product.price)}`}
+      />
       <div className="prod-img">
         <Photo src={assetUrl(product.image)} alt={product.name} sizes="(max-width: 620px) 44vw, 210px" />
         {product.compare_at > product.price && (
@@ -336,7 +349,7 @@ export function SearchPage() {
           </div>
           <div className="card" style={{ marginTop: 8 }}>
             <div className="row" style={{ gap: 12 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 13, background: 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: 'var(--orange)' }}><Icon name="camera" size={21} /></div>
+              <div style={{ width: 44, height: 44, borderRadius: 13, background: 'var(--orange-soft)', display: 'grid', placeItems: 'center', color: 'var(--orange-ink)' }}><Icon name="camera" size={21} /></div>
               <div className="grow">
                 <div className="strong">Can't find it?</div>
                 <div className="sub">Send a photo and a shopper will find it for you.</div>

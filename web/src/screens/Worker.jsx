@@ -196,6 +196,9 @@ function TaskDetail() {
   const [form, setForm] = useState({ proposed_name: '', proposed_price: '', proposed_qty: 1, note: '' });
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receipt, setReceipt] = useState({ data_url: null, amount: '', note: '' });
+  // the photo taken at handover — must be declared before the early return below,
+  // or React sees a different number of hooks between renders and blanks the app
+  const [pickupPhoto, setPickupPhoto] = useState(null);
   const toast = useToast();
   const nav = useNavigate();
   const { user } = useAuth();
@@ -265,8 +268,6 @@ function TaskDetail() {
     setChat('');
     load();
   };
-
-  const [pickupPhoto, setPickupPhoto] = useState(null);
 
   const steps = isShopper
     ? [

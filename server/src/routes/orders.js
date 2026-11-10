@@ -430,19 +430,19 @@ router.get(
       try { return JSON.parse(order.address_json || '{}'); } catch { return {}; }
     })();
 
-    // 'Lekki Phase 1, Lekki Phase 1, Lagos' — the area is often also the city
-    const seenParts = new Set();
-    const addressLine =
-      [address.recipient, address.line1, address.area, address.city]
-        .map((p) => String(p || '').trim())
-        .filter((p) => {
-          if (!p) return false;
-          const key = p.toLowerCase();
-          if (seenParts.has(key)) return false;
-          seenParts.add(key);
-          return true;
-        })
-        .join(', ') || 'Address not recorded';
+    // 'Lekki Phase 1, Lekki Phase 1, Lagos' — the area is usually also in line 1,
+    // and a receipt that repeats itself looks like it was generated badly.
+    const addressLine = (() => {
+      const parts = [];
+      for (const raw of [address.recipient, address.line1, address.area, address.city]) {
+        const part = String(raw || '').trim();
+        if (!part) continue;
+        const so = parts.join(', ').toLowerCase();
+        if (so.includes(part.toLowerCase())) continue;
+        parts.push(part);
+      }
+      return parts.join(', ') || 'Address not recorded';
+    })();
 
     const green = [0.09, 0.42, 0.33];
     const grey = [0.42, 0.45, 0.43];

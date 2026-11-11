@@ -689,7 +689,10 @@ input:focus, select:focus, textarea:focus, .input:focus {
   border-radius: var(--radius-sm);
 }
 @keyframes bb-rise {
-  from { opacity: 0; transform: translateY(8px); }
+  /* no opacity in this one: fading text in from zero means every screen spends
+     340 ms with its grey text at half strength, which is 2.1:1 — unreadable, and
+     honestly measured that way by axe. The slide alone reads as arrival. */
+  from { transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .page > * { animation: bb-rise 0.34s var(--ease) both; }
@@ -994,4 +997,15 @@ input[type="radio"] {
 a.legal-row {
   min-height: 44px;
   align-items: center;
+}
+
+/* nothing depends on movement here; anyone who has asked their phone to calm
+   things down gets the screens without the arrivals */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

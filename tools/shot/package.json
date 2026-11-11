@@ -1,0 +1,16 @@
+{
+  "name": "buybuddy-browser-checks",
+  "private": true,
+  "description": "Headless-browser checks for BUYBUDDY: click-through, narrow-phone sweep, offline behaviour, keyboard/tap behaviour and the axe-core accessibility sweep.",
+  "scripts": {
+    "walk": "node walk.js",
+    "sweep": "node sweep360.js",
+    "offline": "node offline.js",
+    "a11y": "node a11y.js",
+    "tap": "node cardtap.js"
+  },
+  "dependencies": {
+    "axe-core": "^4.10.0",
+    "puppeteer": "^24.0.0"
+  }
+}

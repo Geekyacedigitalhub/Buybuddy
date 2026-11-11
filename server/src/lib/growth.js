@@ -108,9 +108,9 @@ export function resolveReferrer(code) {
 export function referralSummary(userId) {
   const code = ensureReferralCode(userId);
   const invited = db
-    .prepare('SELECT id, name, created_at FROM users WHERE referred_by = ? ORDER BY created_at DESC')
+    .prepare('SELECT id, name, created_at FROM users WHERE referred_by = ? ORDER BY created_at DESC, rowid DESC')
     .all(userId);
-  const rewards = db.prepare('SELECT * FROM referral_rewards WHERE referrer_id = ? ORDER BY created_at DESC').all(userId);
+  const rewards = db.prepare('SELECT * FROM referral_rewards WHERE referrer_id = ? ORDER BY created_at DESC, rowid DESC').all(userId);
   const rules = settingsAll();
   return {
     code,

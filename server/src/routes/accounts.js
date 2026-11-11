@@ -392,7 +392,7 @@ router.get(
   '/notifications',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const rows = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 60').all(req.user.id);
+    const rows = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 60').all(req.user.id);
     res.json({ notifications: rows.map((n) => ({ ...n, read: Boolean(n.read) })), unread: rows.filter((n) => !n.read).length });
   })
 );
@@ -409,7 +409,7 @@ router.get(
       .prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0')
       .get(req.user.id).n;
     const newest = db
-      .prepare('SELECT id, title, body, kind, order_id, read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1')
+      .prepare('SELECT id, title, body, kind, order_id, read, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1')
       .get(req.user.id);
     res.json({ unread, newest: newest ? { ...newest, read: Boolean(newest.read) } : null });
   })

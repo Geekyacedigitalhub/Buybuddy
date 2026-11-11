@@ -128,7 +128,7 @@ export async function paystackReachability() {
 export async function initPayment(order, { method = 'paystack', callbackPath = '/#/payment/return' } = {}) {
   const s = settingsAll();
   const existing = db
-    .prepare("SELECT * FROM payments WHERE order_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1")
+    .prepare("SELECT * FROM payments WHERE order_id = ? AND status = 'pending' ORDER BY created_at DESC, rowid DESC LIMIT 1")
     .get(order.id);
   if (existing) return { reference: existing.reference, authorization_url: existing.provider_payload, method: existing.method };
 

@@ -2123,3 +2123,20 @@ test('53. every catalogue photo has its small versions, and they are small', asy
   assert.deepEqual(missing, [], `photos with no small versions: ${missing.join(', ')}`);
   assert.deepEqual(tooBig, [], `small versions are not small: ${tooBig.join(', ')}`);
 });
+
+test('54. no demo row is dated in the future', async () => {
+  // The seed writes "today at 10:15" style timestamps. Seeded at 01:00 that is nine
+  // hours ahead, and the customer's bell shows a notification from the future as the
+  // newest thing that happened. Anything timed ahead of now is a seed bug.
+  const customer = await login('customer@buybuddy.ng');
+  const now = Date.now() + 60_000; // a minute of slack for the clock
+  const list = (await api('/api/notifications', { token: customer })).body.notifications || [];
+  assert.ok(list.length > 0, 'the demo account has notifications');
+  for (const n of list) {
+    assert.ok(new Date(n.created_at).getTime() <= now, `notification "${n.title}" is dated ${n.created_at}`);
+  }
+  const orders = (await api('/api/orders', { token: customer })).body.orders || [];
+  for (const o of orders) {
+    assert.ok(new Date(o.created_at).getTime() <= now, `order ${o.code} is dated ${o.created_at}`);
+  }
+});

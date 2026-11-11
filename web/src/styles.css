@@ -909,3 +909,89 @@ html, body { overflow-x: hidden; }
      — could never be scrolled into view: it lived underneath the bar forever. */
   .pdp-page.has-buybar { padding-bottom: calc(var(--nav-h, 94px) + 74px); }
 }
+
+/* ------------------------------ tap targets ------------------------------- */
+/* Apple's guideline is 44 px, Google's is 48, WCAG 2.2 AA asks for 24. Every
+   control below is at least 44 in both directions; where a control has to stay
+   visually small (a text link inside a sentence) the padding grows and a matching
+   negative margin keeps the line where it was, so nothing shifts on the page. */
+.btn,
+.btn-sm,
+.select,
+.input,
+.chip,
+.prod-add,
+.qty button,
+.btn-icon,
+a.logo {
+  min-height: 44px;
+}
+.btn-icon,
+.qty button {
+  min-width: 44px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.legal-link {
+  display: inline-block;
+  padding-block: 15px;
+  padding-inline: 4px;
+  margin-block: -15px;
+  margin-inline: -4px;
+}
+/* the store row under the price on a product page: a whole row of text, 30 px tall */
+a.row > .grow,
+a.row {
+  min-height: 44px;
+  align-items: center;
+}
+/* the grid card's "+" was 29 px — the most-pressed control in the whole app */
+.prod-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 999px;   /* a 44 px square reads as a box, not as a "+" */
+}
+
+/* a button that belongs inside a sentence. It has to look like a link and keep
+   the line height it sits in, but still be 44 px tall to the thumb — padding
+   does that, and an equal negative margin puts the line back where it was. */
+.linkish {
+  display: inline;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 15px 2px;
+  margin-block: -15px;
+  min-height: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--green-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* the tick box itself was 13 x 13 and the row around it was 34 px: a miss for a
+   thumb, and hard to see for anyone. The label is the target, so it carries the
+   height; the box itself grows enough to be seen. */
+.check {
+  min-height: 44px;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: var(--green-700);
+}
+a.legal-row {
+  min-height: 44px;
+  align-items: center;
+}

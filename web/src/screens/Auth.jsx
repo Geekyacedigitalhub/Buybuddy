@@ -272,8 +272,7 @@ export default function AuthScreen() {
                     <strong>We could not text the code automatically yet.</strong> Tap{' '}
                     <button
                       type="button"
-                      className="btn btn-ghost btn-sm"
-                      style={{ padding: 0, height: 'auto', verticalAlign: 'baseline', textDecoration: 'underline' }}
+                      className="linkish"
                       onClick={() => { setHelpSent(false); setMode('help'); }}
                     >
                       Ask support for a code
@@ -351,8 +350,7 @@ export default function AuthScreen() {
           <p className="tiny muted" style={{ marginTop: 10 }}>
             Cannot get in at all?{' '}
             <button
-              className="btn btn-ghost btn-sm"
-              style={{ padding: 0, height: 'auto', textDecoration: 'underline', fontSize: 12 }}
+              className="linkish"
               onClick={() => { setHelpSent(false); setMode('help'); }}
             >
               Ask support for a code

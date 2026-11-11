@@ -103,7 +103,7 @@ const numeric = (v) => Number(v || 0);
 export function cashForRider(riderId) {
   ensure();
   const rows = db
-    .prepare('SELECT * FROM cod_cash WHERE rider_id = ? ORDER BY created_at DESC')
+    .prepare('SELECT * FROM cod_cash WHERE rider_id = ? ORDER BY created_at DESC, rowid DESC')
     .all(riderId)
     .map((r) => {
       const order = db.prepare('SELECT code FROM orders WHERE id = ?').get(r.order_id);

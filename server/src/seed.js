@@ -206,9 +206,16 @@ const AREA_COORDS = {
 const areaCoords = (area) => AREA_COORDS[area] || [6.5244, 3.3792];
 const jitter = (v, seed) => v + ((Math.sin(seed * 12.9898) * 43758.5453) % 1) * 0.008;
 
+/**
+ * A demo row dated "today at 10:15" is in the future if the app is seeded at 01:00 —
+ * and a notification from ten hours ahead then sits on top of the customer's bell,
+ * reading as the newest thing that ever happened. Anything that lands in the future
+ * is pushed back a full day instead: still in the past, still in the same order.
+ */
 const daysAgo = (n, hour = 12) => {
   const d = new Date(Date.now() - n * 864e5);
   d.setHours(hour, 15, 0, 0);
+  if (d.getTime() > Date.now()) d.setTime(d.getTime() - 864e5);
   return d.toISOString();
 };
 

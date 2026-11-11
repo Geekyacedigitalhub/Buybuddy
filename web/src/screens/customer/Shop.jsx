@@ -167,7 +167,7 @@ export function Home() {
 
       <section>
         <SectionHead title="Popular stores near you" action={<button className="btn btn-ghost btn-sm" onClick={() => nav('/browse')}>Browse</button>} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: 10 }}>
           {data.popular_stores.map((s) => (
             <Link key={s.id} to={`/store/${s.id}`} className="store-card">
               <span className="store-logo"><img src={assetUrl(s.logo)} alt="" /></span>

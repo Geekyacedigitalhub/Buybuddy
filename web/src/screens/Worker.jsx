@@ -4,6 +4,7 @@ import { api, naira, pretty, timeAgo, fmtAddress, toDataUrl, assetUrl } from '..
 import { Badge, Button, Empty, Field, Icon, Input, LoadFailed, Loading, Modal, SectionHead, StatusBadge, Textarea, useAuth, useAutoRetry, useToast } from '../lib/ui.jsx';
 import LiveLocation from '../components/LiveLocation.jsx';
 import PhotoPicker from '../components/PhotoPicker.jsx';
+import TextSizeControl from '../components/TextSizeControl.jsx';
 
 export default function WorkerApp() {
   return (
@@ -695,6 +696,12 @@ function WorkerAccount() {
         <Field label="Account name"><Input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} /></Field>
         <Field label="Account number"><Input value={form.account_number} onChange={(e) => setForm({ ...form, account_number: e.target.value })} inputMode="numeric" maxLength={10} /></Field>
         <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save details'}</Button>
+      </div>
+
+      <div className="card col" style={{ gap: 10 }}>
+        <div className="h3">Text size</div>
+        <div className="sub">Bigger text for the whole app, on this device.</div>
+        <TextSizeControl />
       </div>
 
       <Button variant="ghost" onClick={logout}><Icon name="logout" size={16} /> Sign out</Button>

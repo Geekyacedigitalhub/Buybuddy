@@ -4,6 +4,7 @@ import { api, naira, pretty, timeAgo, statusTone, assetUrl } from '../lib/api.js
 import { Badge, Button, Empty, Field, Icon, Input, LoadFailed, Loading, Modal, SectionHead, Select, StatusBadge, Textarea, useAuth, useAutoRetry, useToast } from '../lib/ui.jsx';
 import Shell, { Kpi, Bars } from '../components/Shell.jsx';
 import PhotoPicker from '../components/PhotoPicker.jsx';
+import TextSizeControl from '../components/TextSizeControl.jsx';
 
 const NAV = [
   { to: '/merchant', label: 'Dashboard', icon: 'chart', end: true },
@@ -807,6 +808,12 @@ function StoreSettings({ me, reload }) {
 
           <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</Button>
         </div>
+        <div className="col" style={{ gap: 16 }}>
+        <div className="card col" style={{ gap: 10 }}>
+          <div className="h3">Text size</div>
+          <div className="sub">Bigger text for the whole app, on this device.</div>
+          <TextSizeControl />
+        </div>
         <div className="card">
           <div className="h3" style={{ marginBottom: 10 }}>Business details</div>
           <div className="col" style={{ gap: 8 }}>
@@ -817,6 +824,7 @@ function StoreSettings({ me, reload }) {
             <Row k="Rating" v={`${me.store?.rating_avg?.toFixed(1)} (${me.store?.rating_count})`} />
             <Row k="Status" v={me.store?.status} />
           </div>
+        </div>
         </div>
       </div>
     </Shell>

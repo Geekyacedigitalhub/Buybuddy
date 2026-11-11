@@ -1,7 +1,11 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
+import { initTextSize } from './lib/textsize.js';
 import './styles.css';
+
+// before the first paint, so nobody sees the app at the wrong size and then jumps
+initTextSize();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -11,6 +11,9 @@ APP=http://127.0.0.1:8099 node walk.js        # 48 routes x 6 roles, screenshots
 APP=http://127.0.0.1:8099 node sweep360.js    # 45 screens at 360 px and 320 px
 APP=http://127.0.0.1:8099 node offline.js     # every /api call blocked, then restored
 APP=http://127.0.0.1:8099 node a11y.js        # axe-core WCAG 2.1 A/AA
+APP=http://127.0.0.1:8099 node tap.js         # every control is at least 44 x 44
+APP=http://127.0.0.1:8099 node zoom.js        # at Normal / Large / Extra large text
+APP=http://127.0.0.1:8099 node textsizecheck.js  # the text-size switch itself
 ```
 
 Environment:
@@ -19,7 +22,8 @@ Environment:
 |---|---|---|
 | `APP` | `http://127.0.0.1:8099` | build under test |
 | `W` | `390` | viewport width. Accessibility is only meaningful at more than one — the desktop sidebar and the mobile tab bar share no colours |
-| `PW` | local dev password | password for the six demo accounts |
+| `PW` | `GreenKola-2026-Lagos-813` | password for the six demo accounts |
+| `TEXT` | (unset) | `large` / `xlarge` runs `a11y.js` with the app's own text size applied |
 | `OUT` | `~/shots` | where the report and failing screenshots are written |
 
 `a11y.js` writes `report.json` (rule, impact, node count, screens, first example)

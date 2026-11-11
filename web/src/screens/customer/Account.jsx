@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, naira, timeAgo, fmtAddress, pretty, getApiBase, setApiBase, isNativeApp } from '../../lib/api.js';
 import { Badge, Button, Empty, Field, Icon, Input, LoadFailed, Loading, Modal, SectionHead, StatusBadge, Textarea, useAuth, useAutoRetry, useToast } from '../../lib/ui.jsx';
 import { ProductCard } from './Shop.jsx';
+import TextSizeControl from '../../components/TextSizeControl.jsx';
 
 /* -------------------------------- account -------------------------------- */
 
@@ -88,6 +89,12 @@ export function Account() {
             <Icon name="right" size={16} style={{ color: 'var(--ink-3)' }} />
           </Link>
         ))}
+      </div>
+
+      <div className="card col" style={{ gap: 10 }}>
+        <div className="h3">Text size</div>
+        <div className="sub">Make everything in the app bigger. It stays this size until you change it.</div>
+        <TextSizeControl />
       </div>
 
       <div className="card col" style={{ gap: 10 }}>

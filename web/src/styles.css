@@ -1009,3 +1009,110 @@ a.legal-row {
     scroll-behavior: auto !important;
   }
 }
+/* ------------------------------- text size -------------------------------- */
+/* The phone's own font-size setting never reaches a page laid out in px, so the
+   app offers three sizes of its own. Zooming the root scales layout and text
+   together — a bigger font in a layout built for a smaller one is how prices get
+   clipped — and the viewport-tall elements are divided by the same factor so a
+   "full screen" is still exactly one screen. */
+html[data-textsize="large"] { --text-zoom: 1.15; }
+html[data-textsize="xlarge"] { --text-zoom: 1.3; }
+html[data-textsize="large"] #root,
+html[data-textsize="xlarge"] #root { zoom: var(--text-zoom); }
+html[data-textsize="large"] .shell,
+html[data-textsize="xlarge"] .shell { min-height: calc(100vh / var(--text-zoom)); }
+html[data-textsize="large"] .side,
+html[data-textsize="xlarge"] .side { height: calc(100vh / var(--text-zoom)); }
+html[data-textsize="large"] .auth-art,
+html[data-textsize="xlarge"] .auth-art { min-height: calc(100dvh / var(--text-zoom)); }
+
+.textsize-switch {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.textsize-option {
+  flex: 1 1 0;
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ink);
+}
+.textsize-option.active {
+  border-color: var(--green-700);
+  background: var(--green-50);
+  box-shadow: 0 0 0 2px rgba(23, 107, 85, 0.14) inset;
+}
+.textsize-option .tiny { font-size: 11px; }
+.textsize-sample {
+  background: var(--green-50);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* At the larger text sizes a row of controls has to be allowed to wrap instead of
+   pushing its neighbour off the screen — measured at 390 px, the Search button in
+   the search bar was landing 24 px past the right edge at Extra large. */
+html[data-textsize="large"] .searchbar,
+html[data-textsize="xlarge"] .searchbar { flex-wrap: wrap; }
+html[data-textsize="large"] .searchbar input,
+html[data-textsize="xlarge"] .searchbar input { min-width: 120px; }
+html[data-textsize="large"] .btn,
+html[data-textsize="xlarge"] .btn { white-space: normal; }
+html[data-textsize="large"] .row,
+html[data-textsize="xlarge"] .row { flex-wrap: wrap; }
+html[data-textsize="large"] .bn-item,
+html[data-textsize="xlarge"] .bn-item { font-size: 10px; }
+
+/* The worker top bar could not shrink: at Extra large the logo plus the role badge
+   pushed the sign-out button 23 px past the right edge of a 390 px phone. The name
+   gives way (with an ellipsis) before a control does. */
+html[data-textsize="large"] .topbar-inner,
+html[data-textsize="xlarge"] .topbar-inner { gap: 8px; min-width: 0; }
+/* the wordmark is not what gives way — the greeting chip beside it is. At Extra
+   large the logo was shrinking to "BU…", which reads like a broken app. */
+html[data-textsize="large"] .topbar-inner > .badge,
+html[data-textsize="xlarge"] .topbar-inner > .badge { display: none; }
+html[data-textsize="large"] .topbar-inner .logo,
+html[data-textsize="xlarge"] .topbar-inner .logo { flex: 0 0 auto; }
+/* the wordmark is the first thing to go, not a control and not a word chopped in
+   half: at Extra large the mark alone still says BUYBUDDY, and the three buttons
+   beside it stay on screen and stay 44 px. */
+html[data-textsize="large"] .topbar-inner .logo > span:last-child,
+html[data-textsize="xlarge"] .topbar-inner .logo > span:last-child {
+  /* visually hidden, not `display: none` — the wordmark is this link's accessible
+     name, and hiding it outright left a link with no name at all (axe: link-name) */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+html[data-textsize="large"] .topbar-inner > .btn-icon,
+html[data-textsize="xlarge"] .topbar-inner > .btn-icon { flex: 0 0 auto; }
+
+/* 320 px phones (and every size above): two flex rows were 5 and 65 px too wide,
+   because a flex item's default min-width is its longest word — the search input's
+   placeholder and a shop's name were refusing to shrink. */
+.searchbar input { min-width: 0; }
+.store-card,
+.store-card > *,
+.store-card .grow {
+  min-width: 0;
+}
+.store-card .row { flex-wrap: wrap; }

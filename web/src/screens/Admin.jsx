@@ -7,6 +7,7 @@ import {
   Textarea, useToast,
 } from '../lib/ui.jsx';
 import Shell, { Bars, Kpi } from '../components/Shell.jsx';
+import TextSizeControl from '../components/TextSizeControl.jsx';
 
 const NAV = [
   { to: '/admin', label: 'Overview', icon: 'chart', end: true },
@@ -1357,6 +1358,12 @@ function Settings() {
   return (
     <Shell nav={NAV} title="Platform settings" subtitle="Fees, loyalty, referrals, scheduling and payment options — changes take effect immediately">
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
+        <div className="col" style={{ gap: 16 }}>
+        <div className="card col" style={{ gap: 10 }}>
+          <div className="h3">Text size</div>
+          <div className="sub">Bigger text for the whole admin app, on this device.</div>
+          <TextSizeControl />
+        </div>
         <div className="card col" style={{ gap: 12 }}>
           <div className="h3">Fees & commissions</div>
           {num('service_fee_percent', 'Service fee (%)', 'Applied to merchant orders')}
@@ -1369,6 +1376,7 @@ function Settings() {
           {num('vat_percent', 'VAT (%)')}
           {num('min_order_value', 'Minimum order value (₦)')}
           {num('shopper_commission_percent', 'Shopper share of shopping fee (%)')}
+        </div>
         </div>
         <div className="col" style={{ gap: 16 }}>
           <div className="card col" style={{ gap: 10 }}>
